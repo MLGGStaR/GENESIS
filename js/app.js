@@ -65,10 +65,10 @@ const ALL_SCREENS = [
   'player-lobby', 'player-answering', 'player-waiting',
   'player-voting', 'player-voted', 'player-round-results', 'player-final',
   // Guesspionage — host
-  'host-gpn-guessing', 'host-gpn-voting', 'host-gpn-results',
+  'host-gpn-spin', 'host-gpn-guessing', 'host-gpn-voting', 'host-gpn-results',
   // Guesspionage — player
-  'player-gpn-polled', 'player-gpn-spectate', 'player-gpn-voting',
-  'player-gpn-voted', 'player-gpn-polled-waiting',
+  'player-gpn-spin', 'player-gpn-polled', 'player-gpn-spectate',
+  'player-gpn-voting', 'player-gpn-voted', 'player-gpn-polled-waiting',
 ];
 
 function show(id) {
@@ -370,6 +370,11 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     }));
     const polled = players.find(p => p.id === state.polledId);
     const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players };
+    if (state.phase === 'GPN_SPIN') {
+      base.polledId = state.polledId;
+      base.polledName = polled?.name || '?';
+      base.polledColor = polled?.color || '#888';
+    }
     if (state.phase === 'GPN_GUESSING') {
       base.question = state.question?.q;
       base.polledId = state.polledId;
@@ -408,25 +413,38 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     state.polledGuess = null;
     state.question = pickQuestion();
     state.polledId = pickPolled();
-    state.phase = 'GPN_GUESSING';
+
+    // Phase 1: spinning the wheel
+    state.phase = 'GPN_SPIN';
     emitPublic();
-    const polled = getPlayers().find(p => p.id === state.polledId);
     for (const p of getPlayers()) {
-      if (p.id === state.polledId) {
-        sendPrivate(p.id, {
-          phase: 'GPN_GUESSING_POLLED',
-          question: state.question.q,
-          round: state.round,
-          totalRounds: state.totalRounds,
-        });
-      } else {
-        sendPrivate(p.id, {
-          phase: 'GPN_GUESSING_SPECTATE',
-          question: state.question.q,
-          polledName: polled?.name || '?',
-        });
-      }
+      sendPrivate(p.id, { phase: 'GPN_SPIN' });
     }
+
+    // Phase 2 (after wheel animation): start the actual guessing
+    setTimeout(() => {
+      // Bail if game state has moved on (host closed room, etc.)
+      if (state.phase !== 'GPN_SPIN') return;
+      state.phase = 'GPN_GUESSING';
+      emitPublic();
+      const polled = getPlayers().find(p => p.id === state.polledId);
+      for (const p of getPlayers()) {
+        if (p.id === state.polledId) {
+          sendPrivate(p.id, {
+            phase: 'GPN_GUESSING_POLLED',
+            question: state.question.q,
+            round: state.round,
+            totalRounds: state.totalRounds,
+          });
+        } else {
+          sendPrivate(p.id, {
+            phase: 'GPN_GUESSING_SPECTATE',
+            question: state.question.q,
+            polledName: polled?.name || '?',
+          });
+        }
+      }
+    }, 4200); // wheel spins ~3s + result reveal ~1.2s
   }
 
   function endRound() {
@@ -519,6 +537,22 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     if (state.votes.size >= players.length - 1) endRound();
   }
 
+  function submitPollLive(playerId, value) {
+    // Live slider value as the polled player drags. Cosmetic only — relayed
+    // to spectators and host UI, not stored as the locked-in answer.
+    if (state.phase !== 'GPN_GUESSING') return;
+    if (playerId !== state.polledId) return;
+    const v = Math.max(0, Math.min(100, Math.round(Number(value))));
+    if (Number.isNaN(v)) return;
+    // Update host UI
+    if (typeof window !== 'undefined') updateHostLiveGuess(v);
+    // Relay to spectators
+    for (const p of getPlayers()) {
+      if (p.id === state.polledId) continue;
+      sendPrivate(p.id, { phase: 'GPN_LIVE_GUESS', value: v });
+    }
+  }
+
   return {
     get phase() { return state.phase; },
     publicState,
@@ -529,6 +563,7 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     advance,
     submitPollGuess,
     submitPollVote,
+    submitPollLive,
     handleDisconnect(playerId) {
       state.votes.delete(playerId);
       const players = getPlayers();
@@ -683,6 +718,22 @@ function handleGuestMessage(conn, data) {
     if (app.game?.submitPollVote) app.game.submitPollVote(conn.peer, data.direction);
     return;
   }
+
+  if (data.type === 'pollLive') {
+    if (app.game?.submitPollLive) app.game.submitPollLive(conn.peer, data.value);
+    return;
+  }
+}
+
+// Update the host's own live-% display while the polled player drags.
+function updateHostLiveGuess(value) {
+  const v = Math.max(0, Math.min(100, Math.round(Number(value))));
+  const pctEl = document.getElementById('gpn-live-host-pct');
+  const barEl = document.getElementById('gpn-live-host-bar');
+  const thumbEl = document.getElementById('gpn-live-host-thumb');
+  if (pctEl) pctEl.firstChild.nodeValue = String(v);
+  if (barEl) barEl.style.width = v + '%';
+  if (thumbEl) thumbEl.style.left = v + '%';
 }
 
 function handleGuestDisconnect(peerId) {
@@ -879,18 +930,27 @@ function handlePrivateMessage(msg) {
     show('player-lobby');
   }
   // ----- Guesspionage -----
-  else if (msg.phase === 'GPN_GUESSING_POLLED') {
+  else if (msg.phase === 'GPN_SPIN') {
+    applyPlayerColor();
+    show('player-gpn-spin');
+  } else if (msg.phase === 'GPN_GUESSING_POLLED') {
     $('gpn-player-question').textContent = msg.question;
     // Reset slider to 50
     $('gpn-poll-slider').value = 50;
     $('gpn-poll-percent-display').firstChild.nodeValue = '50';
     applyPlayerColor();
     show('player-gpn-polled');
+    // Send initial live value so spectators don't see stale data
+    sendPollLive(50);
   } else if (msg.phase === 'GPN_GUESSING_SPECTATE') {
     $('gpn-spectate-question').textContent = msg.question;
     $('gpn-spectate-name').textContent = msg.polledName || '?';
+    // Reset live display to 50
+    updateSpectatorLive(50);
     applyPlayerColor();
     show('player-gpn-spectate');
+  } else if (msg.phase === 'GPN_LIVE_GUESS') {
+    updateSpectatorLive(msg.value);
   } else if (msg.phase === 'GPN_VOTING') {
     $('gpn-voting-question').textContent = msg.question;
     $('gpn-voting-name').textContent = msg.polledName || '?';
@@ -967,6 +1027,11 @@ function renderHostGameOrLobby(state) {
       status.textContent = `🦊 IMPOSTER ESCAPED — +${state.lastResults.imposterPoints} points`;
     }
     renderLeaderboard($('results-leaderboard'), state.players);
+  } else if (state.phase === 'GPN_SPIN') {
+    show('host-gpn-spin');
+    $('gpn-spin-round').textContent = state.round;
+    $('gpn-spin-total').textContent = state.totalRounds;
+    renderAndSpinWheel(state.players, state.polledId, state.polledName, state.polledColor);
   } else if (state.phase === 'GPN_GUESSING') {
     show('host-gpn-guessing');
     $('gpn-round').textContent = state.round;
@@ -974,6 +1039,8 @@ function renderHostGameOrLobby(state) {
     $('gpn-host-question-1').textContent = state.question || '';
     $('gpn-polled-name-1').textContent = (state.polledName || '?').toUpperCase();
     $('gpn-polled-dot-1').style.background = state.polledColor || '#888';
+    // Reset live bar to 50%
+    updateHostLiveGuess(50);
   } else if (state.phase === 'GPN_VOTING') {
     show('host-gpn-voting');
     $('gpn-round-2').textContent = state.round;
@@ -989,13 +1056,25 @@ function renderHostGameOrLobby(state) {
     $('gpn-results-question').textContent = state.question || '';
     $('gpn-results-guess').textContent = (state.polledGuess ?? 0) + '%';
     $('gpn-results-guess-name').textContent = state.polledName || '?';
-    $('gpn-results-actual').textContent = (state.actual ?? 0) + '%';
     const dir = state.lastResults?.correctDirection;
     const arrow = $('gpn-results-arrow');
     arrow.classList.remove('up', 'down');
     if (dir === 'higher') { arrow.textContent = '▲'; arrow.classList.add('up'); $('gpn-results-direction').textContent = 'HIGHER'; }
     else if (dir === 'lower') { arrow.textContent = '▼'; arrow.classList.add('down'); $('gpn-results-direction').textContent = 'LOWER'; }
     else { arrow.textContent = '='; $('gpn-results-direction').textContent = 'EXACT MATCH'; }
+    // Bullseye banner if very close
+    const distance = state.lastResults?.distance ?? 999;
+    let bullseye = document.getElementById('gpn-bullseye');
+    if (bullseye) bullseye.remove();
+    if (distance <= 5) {
+      bullseye = document.createElement('div');
+      bullseye.id = 'gpn-bullseye';
+      bullseye.className = 'gpn-bullseye-banner';
+      bullseye.textContent = '🎯 BULLSEYE!';
+      $('gpn-results-arrow').parentElement.parentElement.appendChild(bullseye);
+    }
+    // Animate actual % counting up from 0
+    animateCountUp($('gpn-results-actual'), 0, state.actual ?? 0, 1400, '%');
     renderLeaderboard($('gpn-results-leaderboard'), state.players);
   } else if (state.phase === 'FINAL_RESULTS') {
     show('host-final');
@@ -1132,6 +1211,118 @@ function renderVoteButtons(candidates) {
 }
 
 // ============================================================
+// Guesspionage host extras: wheel spin + count-up animation
+// ============================================================
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function renderAndSpinWheel(players, polledId, polledName, polledColor) {
+  const wheelGroup = $('gpn-wheel-rotating');
+  if (!wheelGroup) return;
+
+  // Reset rotation instantly so each new spin starts fresh
+  wheelGroup.style.transition = 'none';
+  wheelGroup.style.transform = 'rotate(0deg)';
+  // Force reflow so the transition restart is honored
+  void wheelGroup.getBoundingClientRect();
+
+  // Hide previous result label
+  const resultEl = $('gpn-spin-result');
+  resultEl.hidden = true;
+  $('gpn-spin-sub').textContent = 'Picking the polled player...';
+
+  // Build segments
+  wheelGroup.innerHTML = '';
+  const r = 100;
+  const n = Math.max(1, players.length);
+  const segDeg = 360 / n;
+  const polledIdx = players.findIndex(p => p.id === polledId);
+
+  players.forEach((p, i) => {
+    // Start angle is at top (-90deg) so segment 0 is centered at -90 + segDeg/2.
+    const startA = -90 + i * segDeg;
+    const endA = -90 + (i + 1) * segDeg;
+    const sA = startA * Math.PI / 180;
+    const eA = endA * Math.PI / 180;
+    const x1 = r * Math.cos(sA), y1 = r * Math.sin(sA);
+    const x2 = r * Math.cos(eA), y2 = r * Math.sin(eA);
+    const largeArc = segDeg > 180 ? 1 : 0;
+    const d = `M0,0 L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${largeArc},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
+
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', d);
+    path.setAttribute('fill', p.color || '#888');
+    path.setAttribute('class', 'gpn-wheel-segment');
+    path.style.color = p.color || '#888'; // for the winner glow
+    path.dataset.player = p.id;
+    wheelGroup.appendChild(path);
+
+    // Player name (or initials if many players)
+    const midA = (startA + endA) / 2;
+    const tr = 0.65 * r;
+    const tx = tr * Math.cos(midA * Math.PI / 180);
+    const ty = tr * Math.sin(midA * Math.PI / 180);
+    const text = document.createElementNS(SVG_NS, 'text');
+    text.setAttribute('x', tx.toFixed(2));
+    text.setAttribute('y', ty.toFixed(2));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('class', 'gpn-wheel-text');
+    // Rotate text radially so it reads outward in each segment
+    text.setAttribute('transform', `rotate(${midA + 90}, ${tx.toFixed(2)}, ${ty.toFixed(2)})`);
+    const label = (p.name || '?').slice(0, n > 6 ? 4 : 8).toUpperCase();
+    text.setAttribute('font-size', n > 8 ? '10' : n > 6 ? '11' : '13');
+    text.textContent = label;
+    wheelGroup.appendChild(text);
+  });
+
+  // Compute final rotation: land the polled segment center under the top pointer.
+  // Segment i is centered at -90 + i*segDeg + segDeg/2 (in wheel-local coords).
+  // We want that angle to end up at -90 (top), so rotate by -(segCenterOffset).
+  // Add 5 full rotations for drama.
+  const segCenterFromTop = polledIdx * segDeg + segDeg / 2; // 0..360
+  const finalRot = 360 * 5 + (360 - segCenterFromTop);
+
+  // Allow the browser to commit the reset, then animate
+  requestAnimationFrame(() => {
+    wheelGroup.style.transition = 'transform 3000ms cubic-bezier(0.18, 0.89, 0.21, 1)';
+    wheelGroup.style.transform = `rotate(${finalRot}deg)`;
+  });
+
+  // After spin lands, highlight the winning segment + show the name
+  setTimeout(() => {
+    const winnerSeg = wheelGroup.querySelector(`path[data-player="${cssEscape(polledId)}"]`);
+    if (winnerSeg) winnerSeg.classList.add('winner');
+    $('gpn-spin-name').textContent = (polledName || '?').toUpperCase();
+    $('gpn-spin-dot').style.background = polledColor || '#888';
+    resultEl.hidden = false;
+    $('gpn-spin-sub').textContent = 'You\'re up!';
+  }, 3050);
+}
+
+function cssEscape(s) {
+  if (window.CSS && CSS.escape) return CSS.escape(s);
+  return String(s).replace(/"/g, '\\"');
+}
+
+function animateCountUp(el, from, to, durationMs, suffix) {
+  if (!el) return;
+  const start = performance.now();
+  const fromV = Number(from) || 0;
+  const toV = Number(to) || 0;
+  const dur = Math.max(50, durationMs);
+  function tick(now) {
+    const t = Math.min(1, (now - start) / dur);
+    // ease-out cubic
+    const e = 1 - Math.pow(1 - t, 3);
+    const v = Math.round(fromV + (toV - fromV) * e);
+    el.textContent = v + (suffix || '');
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// ============================================================
 // MENU + ENTRY UI wiring
 // ============================================================
 
@@ -1221,16 +1412,58 @@ $('answer-form').addEventListener('submit', (e) => {
 // Guesspionage: slider live update + poll guess submit
 const gpnSlider = $('gpn-poll-slider');
 const gpnPctDisplay = $('gpn-poll-percent-display');
+
+let lastLiveSentAt = 0;
+let lastLiveSentValue = -1;
+let pendingLiveTimer = null;
+
+function sendPollLive(value) {
+  if (!(app.hostConn && app.hostConn.open)) return;
+  if (value === lastLiveSentValue) return;
+  lastLiveSentValue = value;
+  app.hostConn.send({ type: 'pollLive', value });
+}
+
+function throttleSendPollLive(value) {
+  // Throttle to ~15Hz so the slider feels live but doesn't flood the channel.
+  // Always send a trailing update so the final position is in sync.
+  const now = Date.now();
+  if (now - lastLiveSentAt > 70) {
+    lastLiveSentAt = now;
+    sendPollLive(value);
+    return;
+  }
+  if (pendingLiveTimer) clearTimeout(pendingLiveTimer);
+  pendingLiveTimer = setTimeout(() => {
+    lastLiveSentAt = Date.now();
+    pendingLiveTimer = null;
+    sendPollLive(Number(gpnSlider.value));
+  }, 80);
+}
+
 gpnSlider.addEventListener('input', () => {
-  // Preserve the % suffix span — replace just the leading number text node.
+  // Local display
   gpnPctDisplay.firstChild.nodeValue = gpnSlider.value;
+  throttleSendPollLive(Number(gpnSlider.value));
 });
+
 $('gpn-poll-submit').addEventListener('click', () => {
   const v = Number(gpnSlider.value);
   if (app.hostConn && app.hostConn.open) {
     app.hostConn.send({ type: 'pollGuess', value: v });
   }
 });
+
+// Spectator-side live display update
+function updateSpectatorLive(value) {
+  const v = Math.max(0, Math.min(100, Math.round(Number(value))));
+  const pctEl = $('gpn-live-spec-pct');
+  const barEl = $('gpn-live-spec-bar');
+  const thumbEl = $('gpn-live-spec-thumb');
+  if (pctEl) pctEl.firstChild.nodeValue = String(v);
+  if (barEl) barEl.style.width = v + '%';
+  if (thumbEl) thumbEl.style.left = v + '%';
+}
 
 // Guesspionage: HIGHER / LOWER vote buttons
 $('gpn-vote-higher').addEventListener('click', () => sendGpnVote('higher'));

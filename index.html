@@ -209,7 +209,30 @@
        GUESSPIONAGE HOST SCREENS
        ============================================================ -->
 
-  <!-- HOST GPN: polled player is guessing % -->
+  <!-- HOST GPN: spinning wheel to pick polled player -->
+  <section id="host-gpn-spin" class="screen">
+    <div class="round-banner">
+      <span class="round-banner-label">ROUND</span>
+      <span class="round-banner-num" id="gpn-spin-round">1</span>
+      <span class="round-banner-of">/ <span id="gpn-spin-total">5</span></span>
+    </div>
+    <h1 class="big-headline">SPIN THE WHEEL</h1>
+    <p class="big-sub" id="gpn-spin-sub">Picking the polled player...</p>
+    <div class="gpn-wheel-wrap">
+      <div class="gpn-wheel-pointer">▼</div>
+      <svg class="gpn-wheel" viewBox="-110 -110 220 220" aria-hidden="true">
+        <g id="gpn-wheel-rotating"></g>
+        <circle cx="0" cy="0" r="22" class="gpn-wheel-hub" />
+      </svg>
+    </div>
+    <div class="gpn-wheel-result" id="gpn-spin-result" hidden>
+      <span class="gpn-spin-label">POLLED PLAYER:</span>
+      <span class="gpn-polled-dot" id="gpn-spin-dot"></span>
+      <span class="gpn-polled-name" id="gpn-spin-name">PLAYER</span>
+    </div>
+  </section>
+
+  <!-- HOST GPN: polled player is guessing % (with live slider sync) -->
   <section id="host-gpn-guessing" class="screen">
     <div class="round-banner">
       <span class="round-banner-label">ROUND</span>
@@ -222,6 +245,14 @@
       <span class="gpn-polled-dot" id="gpn-polled-dot-1"></span>
       <span class="gpn-polled-name" id="gpn-polled-name-1">PLAYER</span>
       <span class="gpn-polled-text">is guessing...</span>
+    </div>
+    <div class="gpn-live-wrap">
+      <div class="gpn-live-pct" id="gpn-live-host-pct">50<span class="gpn-live-pct-suffix">%</span></div>
+      <div class="gpn-live-bar">
+        <div class="gpn-live-bar-fill" id="gpn-live-host-bar" style="width:50%"></div>
+        <div class="gpn-live-bar-thumb" id="gpn-live-host-thumb" style="left:50%"></div>
+      </div>
+      <div class="gpn-live-scale"><span>0%</span><span>50%</span><span>100%</span></div>
     </div>
   </section>
 
@@ -346,6 +377,15 @@
        GUESSPIONAGE PLAYER SCREENS
        ============================================================ -->
 
+  <!-- GPN: spinning the wheel — everyone sees this -->
+  <section id="player-gpn-spin" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">SPINNING THE WHEEL</h2>
+    <p class="play-subtle">Picking who answers this round...</p>
+    <div class="play-spinner"></div>
+    <p class="play-subtle">Look at the big screen!</p>
+  </section>
+
   <!-- GPN: you are the polled player -->
   <section id="player-gpn-polled" class="play-screen">
     <div class="play-banner player-color-banner"></div>
@@ -363,14 +403,21 @@
     <p class="play-tip">Your goal: be as close to the actual answer as possible.</p>
   </section>
 
-  <!-- GPN: not polled, waiting for polled player to guess -->
+  <!-- GPN: not polled, watching polled player drag the slider live -->
   <section id="player-gpn-spectate" class="play-screen">
     <div class="play-banner player-color-banner"></div>
     <p class="play-q-label">POLLING</p>
     <h2 class="play-question gpn-question-text" id="gpn-spectate-question">...</h2>
-    <p class="play-subtle"><strong id="gpn-spectate-name">Player</strong> is guessing...</p>
-    <p class="play-subtle">Think: do you think the real answer is HIGHER or LOWER?</p>
-    <div class="play-spinner"></div>
+    <p class="play-subtle"><strong id="gpn-spectate-name">Player</strong> is dragging the slider...</p>
+    <div class="gpn-live-wrap gpn-live-wrap-small">
+      <div class="gpn-live-pct" id="gpn-live-spec-pct">50<span class="gpn-live-pct-suffix">%</span></div>
+      <div class="gpn-live-bar">
+        <div class="gpn-live-bar-fill" id="gpn-live-spec-bar" style="width:50%"></div>
+        <div class="gpn-live-bar-thumb" id="gpn-live-spec-thumb" style="left:50%"></div>
+      </div>
+      <div class="gpn-live-scale"><span>0%</span><span>50%</span><span>100%</span></div>
+    </div>
+    <p class="play-subtle">HIGHER or LOWER than the real answer?</p>
   </section>
 
   <!-- GPN: voting higher/lower -->
