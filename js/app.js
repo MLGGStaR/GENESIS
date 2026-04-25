@@ -1336,9 +1336,10 @@ function initFillRing(containerId, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return null;
   const arcEl = container.querySelector('[data-fill-arc]');
+  const thumbEl = container.querySelector('[data-fill-thumb]');
   const pctEl = container.querySelector('[data-fill-pct]');
   if (arcEl) arcEl.setAttribute('stroke-dasharray', FILL_CIRCUMFERENCE.toFixed(2));
-  const ring = { container, arcEl, pctEl, value: 0, interactive: !!options.interactive };
+  const ring = { container, arcEl, thumbEl, pctEl, value: 0, interactive: !!options.interactive };
   fillRings.set(containerId, ring);
   if (options.interactive) setupRingDrag(ring, options.onChange);
   setFillValue(ring, 0);
@@ -1352,12 +1353,28 @@ function setFillValue(ring, value) {
     const offset = FILL_CIRCUMFERENCE * (1 - v / 100);
     ring.arcEl.setAttribute('stroke-dashoffset', offset.toFixed(2));
   }
+  if (ring.thumbEl) {
+    // Place thumb at end of fill arc: angle = -90° (top) + (v/100) * 360° going CW
+    const angle = (-90 + (v / 100) * 360) * Math.PI / 180;
+    const x = 110 + 92 * Math.cos(angle);
+    const y = 110 + 92 * Math.sin(angle);
+    ring.thumbEl.setAttribute('cx', x.toFixed(2));
+    ring.thumbEl.setAttribute('cy', y.toFixed(2));
+  }
   if (ring.pctEl) ring.pctEl.textContent = v;
+}
+
+// Convert finger angle (atan2 result, where -90° = top) to a percentage 0..100
+// going clockwise from the top.
+function angleToPct(angleDeg) {
+  let a = angleDeg + 90;          // shift so top = 0
+  if (a < 0) a += 360;
+  if (a >= 360) a -= 360;
+  return a / 360 * 100;           // 0..100, fractional
 }
 
 function setupRingDrag(ring, onChange) {
   let dragging = false;
-  let lastAngle = 0;
 
   function angleFromCenter(clientX, clientY) {
     const rect = ring.container.getBoundingClientRect();
@@ -1366,24 +1383,33 @@ function setupRingDrag(ring, onChange) {
     return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
   }
 
+  // Absolute angle mapping: finger position around the ring directly maps to
+  // the value. Detect wrap-around at the top so dragging just past 100% clamps
+  // there instead of snapping to 0% (and vice versa).
+  function applyAngle(angleDeg) {
+    const newVal = angleToPct(angleDeg);
+    const prev = ring.value;
+    const diff = newVal - prev;
+    let target = newVal;
+    if (diff < -50) target = 100;       // crossed CW past top: clamp at 100
+    else if (diff > 50) target = 0;     // crossed CCW past top: clamp at 0
+    setFillValue(ring, target);
+    if (onChange) onChange(ring.value);
+  }
+
   function onDown(e) {
     dragging = true;
-    lastAngle = angleFromCenter(e.clientX, e.clientY);
     ring.container.setPointerCapture && ring.container.setPointerCapture(e.pointerId);
     ring.container.classList.add('dragging');
+    // For first touch, jump straight to the tapped angle (no wrap detection)
+    const ang = angleFromCenter(e.clientX, e.clientY);
+    setFillValue(ring, angleToPct(ang));
+    if (onChange) onChange(ring.value);
     e.preventDefault();
   }
   function onMove(e) {
     if (!dragging) return;
-    const a = angleFromCenter(e.clientX, e.clientY);
-    let delta = a - lastAngle;
-    if (delta > 180) delta -= 360;
-    if (delta < -180) delta += 360;
-    lastAngle = a;
-    // Finger CW (delta > 0) → fill grows. 360° of drag = 100% fill.
-    const newValue = Math.max(0, Math.min(100, ring.value + delta / 3.6));
-    setFillValue(ring, newValue);
-    if (onChange) onChange(ring.value);
+    applyAngle(angleFromCenter(e.clientX, e.clientY));
     e.preventDefault();
   }
   function onUp() {

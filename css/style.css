@@ -1739,12 +1739,33 @@ h1, h2, h3 { margin: 0; }
   stroke-linecap: round;
   transition: stroke-dashoffset 0.08s linear;
   filter: drop-shadow(0 0 8px rgba(255, 46, 147, 0.45));
+  pointer-events: none;
+}
+.gpn-fill-bg { pointer-events: none; }
+
+.gpn-fill-thumb {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 5;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+  transition: cx 0.08s linear, cy 0.08s linear, r 0.15s ease;
+  pointer-events: none;
+}
+.gpn-fill-interactive .gpn-fill-thumb {
+  filter: drop-shadow(0 0 14px var(--accent)) drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+}
+.gpn-fill-interactive.dragging .gpn-fill-thumb {
+  fill: var(--accent);
+  stroke: #fff;
+  stroke-width: 6;
+  filter: drop-shadow(0 0 24px var(--accent));
 }
 
-.gpn-fill-interactive {
-  cursor: grab;
-  touch-action: none; /* let JS handle drag gestures */
+.gpn-fill-interactive,
+.gpn-fill-interactive * {
+  touch-action: none; /* let JS handle drag gestures, no scroll/zoom hijack */
 }
+.gpn-fill-interactive { cursor: grab; }
 .gpn-fill-interactive:active { cursor: grabbing; }
 .gpn-fill-interactive .gpn-fill-fg {
   animation: ringIdleGlow 2.5s ease-in-out infinite;
