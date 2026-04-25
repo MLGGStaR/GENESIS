@@ -5,6 +5,7 @@
 // ============================================================
 
 import { QUESTION_PAIRS } from './questions.js';
+import { POLL_QUESTIONS } from './guesspionage-questions.js';
 
 const PEER_PREFIX = 'genesis-impv1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
@@ -57,10 +58,17 @@ const app = {
 
 const ALL_SCREENS = [
   'screen-menu', 'screen-entry', 'screen-disconnected',
+  // Imposter — host
   'host-lobby', 'host-answering', 'host-reveal-answers',
   'host-reveal-question', 'host-voting', 'host-round-results', 'host-final',
+  // Imposter — player
   'player-lobby', 'player-answering', 'player-waiting',
   'player-voting', 'player-voted', 'player-round-results', 'player-final',
+  // Guesspionage — host
+  'host-gpn-guessing', 'host-gpn-voting', 'host-gpn-results',
+  // Guesspionage — player
+  'player-gpn-polled', 'player-gpn-spectate', 'player-gpn-voting',
+  'player-gpn-voted', 'player-gpn-polled-waiting',
 ];
 
 function show(id) {
@@ -319,6 +327,235 @@ function createImposterGame({ getPlayers, broadcastPublic, sendPrivate }) {
 }
 
 // ============================================================
+// Guesspionage game (host-only). One polled player per round guesses a %,
+// everyone else votes higher/lower vs the actual answer.
+// ============================================================
+
+function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
+  const state = {
+    phase: 'LOBBY',
+    round: 0,
+    totalRounds: 5,
+    polledRotation: [],
+    usedQuestionIndexes: new Set(),
+    polledId: null,
+    question: null,        // { q, a, idx }
+    polledGuess: null,     // 0-100
+    votes: new Map(),      // voterId -> 'higher' | 'lower'
+    lastResults: null,
+  };
+
+  function pickQuestion() {
+    if (state.usedQuestionIndexes.size >= POLL_QUESTIONS.length) state.usedQuestionIndexes.clear();
+    let idx;
+    do { idx = Math.floor(Math.random() * POLL_QUESTIONS.length); }
+    while (state.usedQuestionIndexes.has(idx));
+    state.usedQuestionIndexes.add(idx);
+    return { ...POLL_QUESTIONS[idx], idx };
+  }
+
+  function pickPolled() {
+    const ids = getPlayers().map(p => p.id);
+    if (ids.length === 0) return null;
+    state.polledRotation = state.polledRotation.filter(id => ids.includes(id));
+    if (state.polledRotation.length === 0) {
+      state.polledRotation = [...ids].sort(() => Math.random() - 0.5);
+    }
+    return state.polledRotation.shift();
+  }
+
+  function publicState() {
+    const players = getPlayers().map(p => ({
+      id: p.id, name: p.name, color: p.color, score: p.score,
+    }));
+    const polled = players.find(p => p.id === state.polledId);
+    const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players };
+    if (state.phase === 'GPN_GUESSING') {
+      base.question = state.question?.q;
+      base.polledId = state.polledId;
+      base.polledName = polled?.name || '?';
+      base.polledColor = polled?.color || '#888';
+    }
+    if (state.phase === 'GPN_VOTING') {
+      base.question = state.question?.q;
+      base.polledId = state.polledId;
+      base.polledName = polled?.name || '?';
+      base.polledColor = polled?.color || '#888';
+      base.polledGuess = state.polledGuess;
+      base.voteCount = state.votes.size;
+      base.totalVoters = Math.max(0, players.length - 1);
+    }
+    if (state.phase === 'GPN_ROUND_RESULTS') {
+      base.question = state.question?.q;
+      base.polledId = state.polledId;
+      base.polledName = polled?.name || '?';
+      base.polledColor = polled?.color || '#888';
+      base.polledGuess = state.polledGuess;
+      base.actual = state.question?.a;
+      base.lastResults = state.lastResults;
+    }
+    if (state.phase === 'FINAL_RESULTS') {
+      base.standings = [...players].sort((a, b) => b.score - a.score);
+    }
+    return base;
+  }
+
+  function emitPublic() { broadcastPublic(publicState()); }
+
+  function startRound() {
+    state.round++;
+    state.votes.clear();
+    state.polledGuess = null;
+    state.question = pickQuestion();
+    state.polledId = pickPolled();
+    state.phase = 'GPN_GUESSING';
+    emitPublic();
+    const polled = getPlayers().find(p => p.id === state.polledId);
+    for (const p of getPlayers()) {
+      if (p.id === state.polledId) {
+        sendPrivate(p.id, {
+          phase: 'GPN_GUESSING_POLLED',
+          question: state.question.q,
+          round: state.round,
+          totalRounds: state.totalRounds,
+        });
+      } else {
+        sendPrivate(p.id, {
+          phase: 'GPN_GUESSING_SPECTATE',
+          question: state.question.q,
+          polledName: polled?.name || '?',
+        });
+      }
+    }
+  }
+
+  function endRound() {
+    const actual = state.question.a;
+    const guess = state.polledGuess;
+    const distance = Math.abs(actual - guess);
+
+    let polledPoints = 0;
+    if (distance <= 5)       polledPoints = 1500;
+    else if (distance <= 15) polledPoints = 1000;
+    else if (distance <= 30) polledPoints = 500;
+    else                     polledPoints = 0;
+
+    const correctDir = actual > guess ? 'higher' : actual < guess ? 'lower' : null;
+    const players = getPlayers();
+    const voterResults = [];
+    for (const [voterId, direction] of state.votes) {
+      const p = players.find(p => p.id === voterId);
+      if (!p) continue;
+      const correct = correctDir !== null && direction === correctDir;
+      const points = correct ? 1000 : 0;
+      p.score += points;
+      voterResults.push({ id: voterId, name: p.name, color: p.color, direction, correct, points });
+    }
+    const polled = players.find(p => p.id === state.polledId);
+    if (polled) polled.score += polledPoints;
+
+    state.lastResults = {
+      actual, guess, distance,
+      correctDirection: correctDir,
+      polledPoints, polledName: polled?.name || '?', polledColor: polled?.color || '#888',
+      voterResults,
+    };
+    state.phase = 'GPN_ROUND_RESULTS';
+    emitPublic();
+    for (const p of players) sendPrivate(p.id, { phase: 'GPN_ROUND_RESULTS' });
+  }
+
+  function advance() {
+    if (state.phase === 'GPN_GUESSING') {
+      // Force-skip polled player who never submitted; treat as 50%.
+      submitPollGuess(state.polledId, 50);
+    } else if (state.phase === 'GPN_VOTING') {
+      endRound();
+    } else if (state.phase === 'GPN_ROUND_RESULTS') {
+      if (state.round >= state.totalRounds) {
+        state.phase = 'FINAL_RESULTS';
+        emitPublic();
+        for (const p of getPlayers()) sendPrivate(p.id, { phase: 'FINAL_RESULTS' });
+      } else {
+        startRound();
+      }
+    }
+  }
+
+  function submitPollGuess(playerId, value) {
+    if (state.phase !== 'GPN_GUESSING') return;
+    if (playerId !== state.polledId) return;
+    const v = Math.max(0, Math.min(100, Math.round(Number(value))));
+    if (Number.isNaN(v)) return;
+    state.polledGuess = v;
+    state.phase = 'GPN_VOTING';
+    emitPublic();
+    sendPrivate(state.polledId, { phase: 'GPN_POLLED_WAITING', guess: v });
+    const polled = getPlayers().find(p => p.id === state.polledId);
+    for (const p of getPlayers()) {
+      if (p.id === state.polledId) continue;
+      sendPrivate(p.id, {
+        phase: 'GPN_VOTING',
+        question: state.question.q,
+        polledName: polled?.name || '?',
+        polledGuess: v,
+      });
+    }
+    // 2-player edge case: nobody is voting, end round immediately… actually
+    // 2 players means 1 voter, normal flow works.
+    const expectedVoters = getPlayers().length - 1;
+    if (expectedVoters === 0) endRound();
+  }
+
+  function submitPollVote(voterId, direction) {
+    if (state.phase !== 'GPN_VOTING') return;
+    if (voterId === state.polledId) return;
+    if (direction !== 'higher' && direction !== 'lower') return;
+    const players = getPlayers();
+    if (!players.find(p => p.id === voterId)) return;
+    state.votes.set(voterId, direction);
+    sendPrivate(voterId, { phase: 'GPN_VOTED', direction });
+    emitPublic();
+    if (state.votes.size >= players.length - 1) endRound();
+  }
+
+  return {
+    get phase() { return state.phase; },
+    publicState,
+    start() {
+      if (getPlayers().length < 2) return;
+      startRound();
+    },
+    advance,
+    submitPollGuess,
+    submitPollVote,
+    handleDisconnect(playerId) {
+      state.votes.delete(playerId);
+      const players = getPlayers();
+      if (playerId === state.polledId &&
+          (state.phase === 'GPN_GUESSING' || state.phase === 'GPN_VOTING')) {
+        // Polled player bailed — end the round with no scoring.
+        state.lastResults = {
+          actual: state.question?.a ?? 0,
+          guess: state.polledGuess ?? 0,
+          distance: 0, correctDirection: null,
+          polledPoints: 0, polledName: '(left)', polledColor: '#888',
+          voterResults: [],
+        };
+        state.phase = 'GPN_ROUND_RESULTS';
+        emitPublic();
+        for (const p of players) sendPrivate(p.id, { phase: 'GPN_ROUND_RESULTS' });
+        return;
+      }
+      if (state.phase === 'GPN_VOTING') {
+        const expectedVoters = players.length - 1;
+        if (expectedVoters > 0 && state.votes.size >= expectedVoters) endRound();
+      }
+    },
+  };
+}
+
+// ============================================================
 // HOST: room management + message dispatch
 // ============================================================
 
@@ -428,12 +665,22 @@ function handleGuestMessage(conn, data) {
   }
 
   if (data.type === 'submit') {
-    if (app.game) app.game.submitAnswer(conn.peer, data.answer);
+    if (app.game?.submitAnswer) app.game.submitAnswer(conn.peer, data.answer);
     return;
   }
 
   if (data.type === 'vote') {
-    if (app.game) app.game.submitVote(conn.peer, data.targetId);
+    if (app.game?.submitVote) app.game.submitVote(conn.peer, data.targetId);
+    return;
+  }
+
+  if (data.type === 'pollGuess') {
+    if (app.game?.submitPollGuess) app.game.submitPollGuess(conn.peer, data.value);
+    return;
+  }
+
+  if (data.type === 'pollVote') {
+    if (app.game?.submitPollVote) app.game.submitPollVote(conn.peer, data.direction);
     return;
   }
 }
@@ -631,6 +878,37 @@ function handlePrivateMessage(msg) {
     applyPlayerColor();
     show('player-lobby');
   }
+  // ----- Guesspionage -----
+  else if (msg.phase === 'GPN_GUESSING_POLLED') {
+    $('gpn-player-question').textContent = msg.question;
+    // Reset slider to 50
+    $('gpn-poll-slider').value = 50;
+    $('gpn-poll-percent-display').firstChild.nodeValue = '50';
+    applyPlayerColor();
+    show('player-gpn-polled');
+  } else if (msg.phase === 'GPN_GUESSING_SPECTATE') {
+    $('gpn-spectate-question').textContent = msg.question;
+    $('gpn-spectate-name').textContent = msg.polledName || '?';
+    applyPlayerColor();
+    show('player-gpn-spectate');
+  } else if (msg.phase === 'GPN_VOTING') {
+    $('gpn-voting-question').textContent = msg.question;
+    $('gpn-voting-name').textContent = msg.polledName || '?';
+    $('gpn-voting-pct').textContent = (msg.polledGuess ?? 0) + '%';
+    applyPlayerColor();
+    show('player-gpn-voting');
+  } else if (msg.phase === 'GPN_VOTED') {
+    $('gpn-voted-direction').textContent = (msg.direction || '?').toUpperCase();
+    applyPlayerColor();
+    show('player-gpn-voted');
+  } else if (msg.phase === 'GPN_POLLED_WAITING') {
+    $('gpn-polled-my-guess').textContent = msg.guess ?? '--';
+    applyPlayerColor();
+    show('player-gpn-polled-waiting');
+  } else if (msg.phase === 'GPN_ROUND_RESULTS') {
+    applyPlayerColor();
+    show('player-round-results');
+  }
 }
 
 // ============================================================
@@ -689,6 +967,36 @@ function renderHostGameOrLobby(state) {
       status.textContent = `🦊 IMPOSTER ESCAPED — +${state.lastResults.imposterPoints} points`;
     }
     renderLeaderboard($('results-leaderboard'), state.players);
+  } else if (state.phase === 'GPN_GUESSING') {
+    show('host-gpn-guessing');
+    $('gpn-round').textContent = state.round;
+    $('gpn-total-rounds').textContent = state.totalRounds;
+    $('gpn-host-question-1').textContent = state.question || '';
+    $('gpn-polled-name-1').textContent = (state.polledName || '?').toUpperCase();
+    $('gpn-polled-dot-1').style.background = state.polledColor || '#888';
+  } else if (state.phase === 'GPN_VOTING') {
+    show('host-gpn-voting');
+    $('gpn-round-2').textContent = state.round;
+    $('gpn-total-rounds-2').textContent = state.totalRounds;
+    $('gpn-host-question-2').textContent = state.question || '';
+    $('gpn-polled-name-2').textContent = (state.polledName || '?').toUpperCase();
+    $('gpn-polled-dot-2').style.background = state.polledColor || '#888';
+    $('gpn-guess-pct').textContent = (state.polledGuess ?? 0) + '%';
+    $('gpn-vote-count').textContent = state.voteCount || 0;
+    $('gpn-vote-total').textContent = state.totalVoters || 0;
+  } else if (state.phase === 'GPN_ROUND_RESULTS') {
+    show('host-gpn-results');
+    $('gpn-results-question').textContent = state.question || '';
+    $('gpn-results-guess').textContent = (state.polledGuess ?? 0) + '%';
+    $('gpn-results-guess-name').textContent = state.polledName || '?';
+    $('gpn-results-actual').textContent = (state.actual ?? 0) + '%';
+    const dir = state.lastResults?.correctDirection;
+    const arrow = $('gpn-results-arrow');
+    arrow.classList.remove('up', 'down');
+    if (dir === 'higher') { arrow.textContent = '▲'; arrow.classList.add('up'); $('gpn-results-direction').textContent = 'HIGHER'; }
+    else if (dir === 'lower') { arrow.textContent = '▼'; arrow.classList.add('down'); $('gpn-results-direction').textContent = 'LOWER'; }
+    else { arrow.textContent = '='; $('gpn-results-direction').textContent = 'EXACT MATCH'; }
+    renderLeaderboard($('gpn-results-leaderboard'), state.players);
   } else if (state.phase === 'FINAL_RESULTS') {
     show('host-final');
     renderFinal(state.standings);
@@ -887,15 +1195,20 @@ $('host-back').addEventListener('click', () => {
 });
 $('host-start-btn').addEventListener('click', () => {
   if (hostPlayers.length < 2) return;
-  app.game = createImposterGame({ getPlayers, broadcastPublic, sendPrivate });
+  if (app.selectedGame === 'guesspionage') {
+    app.game = createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate });
+  } else {
+    app.game = createImposterGame({ getPlayers, broadcastPublic, sendPrivate });
+  }
   app.game.start();
 });
 $('reveal-answers-next').addEventListener('click', () => app.game?.advance());
 $('reveal-question-next').addEventListener('click', () => app.game?.advance());
 $('results-next').addEventListener('click', () => app.game?.advance());
+$('gpn-results-next').addEventListener('click', () => app.game?.advance());
 $('final-back').addEventListener('click', () => resetToLobby());
 
-// Player answer submit
+// Player answer submit (Imposter)
 $('answer-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const ans = $('answer-input').value.trim();
@@ -905,17 +1218,43 @@ $('answer-form').addEventListener('submit', (e) => {
   }
 });
 
+// Guesspionage: slider live update + poll guess submit
+const gpnSlider = $('gpn-poll-slider');
+const gpnPctDisplay = $('gpn-poll-percent-display');
+gpnSlider.addEventListener('input', () => {
+  // Preserve the % suffix span — replace just the leading number text node.
+  gpnPctDisplay.firstChild.nodeValue = gpnSlider.value;
+});
+$('gpn-poll-submit').addEventListener('click', () => {
+  const v = Number(gpnSlider.value);
+  if (app.hostConn && app.hostConn.open) {
+    app.hostConn.send({ type: 'pollGuess', value: v });
+  }
+});
+
+// Guesspionage: HIGHER / LOWER vote buttons
+$('gpn-vote-higher').addEventListener('click', () => sendGpnVote('higher'));
+$('gpn-vote-lower').addEventListener('click', () => sendGpnVote('lower'));
+function sendGpnVote(direction) {
+  if (app.hostConn && app.hostConn.open) {
+    app.hostConn.send({ type: 'pollVote', direction });
+  }
+}
+
 // ============================================================
 // Boot
 // ============================================================
 
 show('screen-menu');
 
-// Deep link: ?game=imposter&code=XXXX
+// Deep link: ?game=imposter|guesspionage&code=XXXX
 const params = new URLSearchParams(window.location.search);
 const qsGame = params.get('game');
 const qsCode = params.get('code') || params.get('room');
 if (qsGame === 'imposter') {
   openEntry(qsGame, 'IMPOSTER', '2-12 players · spot the bluffer');
+  if (qsCode) $('entry-code').value = qsCode.toUpperCase().slice(0, 4);
+} else if (qsGame === 'guesspionage') {
+  openEntry(qsGame, 'GUESSPIONAGE', '2-12 players · higher or lower?');
   if (qsCode) $('entry-code').value = qsCode.toUpperCase().slice(0, 4);
 }

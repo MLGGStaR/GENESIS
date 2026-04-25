@@ -1366,3 +1366,304 @@ h1, h2, h3 { margin: 0; }
   font-size: 15px;
   font-style: italic;
 }
+
+/* ============================================================
+   GUESSPIONAGE
+   ============================================================ */
+
+/* Game card art */
+.game-card-guesspionage .game-card-art {
+  background: linear-gradient(135deg, #06b6d4 0%, #7c3aed 50%, #ff2e93 100%);
+}
+
+/* Question text — keep readable even if long */
+.gpn-question-text {
+  line-height: 1.2;
+}
+
+/* HOST: polled-player banner during guessing phase */
+.gpn-polled-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 28px;
+  margin-top: 16px;
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: clamp(20px, 2vw, 28px);
+  font-weight: 600;
+  animation: pollPulse 1.6s ease-in-out infinite;
+}
+.gpn-polled-dot {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,0.4);
+}
+.gpn-polled-name {
+  font-family: 'Bungee', sans-serif;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+.gpn-polled-text {
+  color: var(--text-soft);
+  font-weight: 500;
+}
+@keyframes pollPulse {
+  0%, 100% { transform: scale(1); box-shadow: var(--shadow); }
+  50%      { transform: scale(1.03); box-shadow: var(--shadow-lg); }
+}
+
+/* HOST: revealed guess card during voting phase */
+.gpn-guess-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 28px;
+  margin: 8px 0 24px;
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.gpn-guess-dot {
+  width: 28px;
+  height: 28px;
+}
+.gpn-guess-says {
+  color: var(--text-soft);
+  font-weight: 500;
+  font-size: 22px;
+}
+.gpn-guess-pct {
+  font-family: 'Bungee', sans-serif;
+  font-size: clamp(36px, 4vw, 56px);
+  background: var(--code-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: 1px;
+}
+
+/* HOST: results reveal row */
+.gpn-reveal-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 22px 0 18px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.gpn-reveal-card {
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: 24px;
+  padding: 22px 30px;
+  text-align: center;
+  min-width: 200px;
+  box-shadow: var(--shadow);
+  animation: cardPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gpn-reveal-card-actual {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--surface), var(--surface-2));
+  animation: actualPop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes actualPop {
+  0%   { opacity: 0; transform: scale(0.6); }
+  60%  { transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.gpn-reveal-label {
+  font-family: 'Bungee', sans-serif;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+.gpn-reveal-card-actual .gpn-reveal-label { color: var(--accent); }
+.gpn-reveal-pct {
+  font-family: 'Bungee', sans-serif;
+  font-size: clamp(48px, 6vw, 80px);
+  background: var(--code-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1;
+}
+.gpn-reveal-name {
+  margin-top: 8px;
+  font-weight: 700;
+  color: var(--text-soft);
+  font-size: 18px;
+  letter-spacing: 1px;
+}
+.gpn-reveal-card-actual .gpn-reveal-name {
+  font-family: 'Bungee', sans-serif;
+  letter-spacing: 3px;
+}
+.gpn-reveal-vs {
+  font-family: 'Bungee', sans-serif;
+  font-size: clamp(36px, 4vw, 56px);
+  color: var(--text-faint);
+}
+.gpn-reveal-vs.up   { color: var(--c5); }
+.gpn-reveal-vs.down { color: var(--c4); }
+
+/* PLAYER: polled-player pill (replaces .play-imposter-pill background) */
+.gpn-polled-pill {
+  background: linear-gradient(135deg, #06b6d4 0%, #7c3aed 100%);
+  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
+}
+
+/* PLAYER: percentage poll input */
+.gpn-poll-input {
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: 22px;
+  padding: 22px 18px 16px;
+  box-shadow: var(--shadow-sm);
+  margin: 8px 0 18px;
+}
+.gpn-poll-percent {
+  font-family: 'Bungee', sans-serif;
+  font-size: 70px;
+  background: var(--code-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-align: center;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+.gpn-poll-pct {
+  font-size: 38px;
+  margin-left: 4px;
+}
+#gpn-poll-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-3), var(--accent-2), var(--accent));
+  outline: none;
+  cursor: pointer;
+}
+#gpn-poll-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--accent);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+#gpn-poll-slider::-moz-range-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #fff;
+  border: 4px solid var(--accent);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+.gpn-poll-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* PLAYER: guess display before voting */
+.gpn-guess-display {
+  background: var(--surface);
+  border: 3px solid var(--border);
+  border-radius: 22px;
+  padding: 18px;
+  margin: 0 0 22px;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+}
+.gpn-guess-display-name {
+  font-family: 'Bungee', sans-serif;
+  font-size: 20px;
+  letter-spacing: 1px;
+  color: var(--text);
+  display: block;
+  margin-bottom: 4px;
+}
+.gpn-guess-display-says {
+  color: var(--text-soft);
+  font-weight: 500;
+  font-size: 16px;
+  display: block;
+}
+.gpn-guess-display-pct {
+  font-family: 'Bungee', sans-serif;
+  font-size: 56px;
+  background: var(--code-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: block;
+  line-height: 1.1;
+}
+
+/* PLAYER: HIGHER / LOWER vote buttons */
+.gpn-vote-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: 100%;
+  margin-top: 6px;
+}
+.gpn-vote-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 28px 12px;
+  border-radius: 22px;
+  border: 4px solid var(--border);
+  background: var(--surface);
+  font-family: 'Bungee', sans-serif;
+  letter-spacing: 2px;
+  font-size: 22px;
+  color: var(--text);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.2s, box-shadow 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+.gpn-vote-btn:active {
+  transform: scale(0.96);
+}
+.gpn-vote-higher:hover, .gpn-vote-higher:active {
+  border-color: var(--c5);
+  background: linear-gradient(180deg, rgba(34,197,94,0.15), var(--surface));
+  box-shadow: var(--shadow);
+}
+.gpn-vote-lower:hover, .gpn-vote-lower:active {
+  border-color: var(--c4);
+  background: linear-gradient(180deg, rgba(245,158,11,0.15), var(--surface));
+  box-shadow: var(--shadow);
+}
+.gpn-vote-arrow {
+  font-size: 38px;
+  line-height: 1;
+}
+.gpn-vote-higher .gpn-vote-arrow { color: var(--c5); }
+.gpn-vote-lower  .gpn-vote-arrow { color: var(--c4); }
+.gpn-vote-label {
+  font-size: 18px;
+}

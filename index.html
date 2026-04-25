@@ -49,6 +49,16 @@
         </div>
       </button>
 
+      <button class="game-card game-card-guesspionage" data-game="guesspionage" data-tag="2-12 players · higher or lower?">
+        <div class="game-card-art">
+          <div class="game-card-emoji">📊</div>
+        </div>
+        <div class="game-card-body">
+          <div class="game-card-title">GUESSPIONAGE</div>
+          <div class="game-card-tag">2-12 players · higher or lower?</div>
+        </div>
+      </button>
+
       <div class="game-card game-card-soon">
         <div class="game-card-art">
           <div class="game-card-emoji">✨</div>
@@ -195,6 +205,72 @@
   </section>
 
   <!-- HOST: FINAL -->
+  <!-- ============================================================
+       GUESSPIONAGE HOST SCREENS
+       ============================================================ -->
+
+  <!-- HOST GPN: polled player is guessing % -->
+  <section id="host-gpn-guessing" class="screen">
+    <div class="round-banner">
+      <span class="round-banner-label">ROUND</span>
+      <span class="round-banner-num" id="gpn-round">1</span>
+      <span class="round-banner-of">/ <span id="gpn-total-rounds">5</span></span>
+    </div>
+    <p class="reveal-q-label">POLLING:</p>
+    <h1 class="reveal-q-text gpn-question-text" id="gpn-host-question-1">...</h1>
+    <div class="gpn-polled-banner">
+      <span class="gpn-polled-dot" id="gpn-polled-dot-1"></span>
+      <span class="gpn-polled-name" id="gpn-polled-name-1">PLAYER</span>
+      <span class="gpn-polled-text">is guessing...</span>
+    </div>
+  </section>
+
+  <!-- HOST GPN: voting (poll guess revealed, others vote H/L) -->
+  <section id="host-gpn-voting" class="screen">
+    <div class="round-banner">
+      <span class="round-banner-label">ROUND</span>
+      <span class="round-banner-num" id="gpn-round-2">1</span>
+      <span class="round-banner-of">/ <span id="gpn-total-rounds-2">5</span></span>
+    </div>
+    <p class="reveal-q-label">POLLING:</p>
+    <h2 class="reveal-q-text reveal-q-text-small gpn-question-text" id="gpn-host-question-2">...</h2>
+    <div class="gpn-guess-card">
+      <span class="gpn-polled-dot gpn-guess-dot" id="gpn-polled-dot-2"></span>
+      <span class="gpn-polled-name" id="gpn-polled-name-2">PLAYER</span>
+      <span class="gpn-guess-says">guessed</span>
+      <span class="gpn-guess-pct" id="gpn-guess-pct">--%</span>
+    </div>
+    <h1 class="big-headline">HIGHER OR LOWER?</h1>
+    <p class="big-sub">Vote on your phones</p>
+    <p class="progress-counter"><span id="gpn-vote-count">0</span> / <span id="gpn-vote-total">0</span> voted</p>
+  </section>
+
+  <!-- HOST GPN: round results (reveal + scores) -->
+  <section id="host-gpn-results" class="screen">
+    <p class="reveal-q-label">THE QUESTION WAS:</p>
+    <h2 class="reveal-q-text reveal-q-text-small gpn-question-text" id="gpn-results-question">...</h2>
+    <div class="gpn-reveal-row">
+      <div class="gpn-reveal-card">
+        <div class="gpn-reveal-label">GUESSED</div>
+        <div class="gpn-reveal-pct" id="gpn-results-guess">--%</div>
+        <div class="gpn-reveal-name" id="gpn-results-guess-name">player</div>
+      </div>
+      <div class="gpn-reveal-vs" id="gpn-results-arrow">↕</div>
+      <div class="gpn-reveal-card gpn-reveal-card-actual">
+        <div class="gpn-reveal-label">ACTUAL</div>
+        <div class="gpn-reveal-pct" id="gpn-results-actual">--%</div>
+        <div class="gpn-reveal-name" id="gpn-results-direction">HIGHER</div>
+      </div>
+    </div>
+    <div class="results-leaderboard" id="gpn-results-leaderboard"></div>
+    <div class="screen-cta">
+      <button class="btn btn-primary" id="gpn-results-next">NEXT ROUND</button>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+
+  <!-- HOST: shared FINAL screen (used by both games) -->
   <section id="host-final" class="screen">
     <h1 class="big-headline">🏆 WINNER 🏆</h1>
     <div id="final-podium" class="final-podium"></div>
@@ -265,6 +341,80 @@
     <h2 class="play-h2">ROUND OVER</h2>
     <p class="play-subtle">Look at the big screen.</p>
   </section>
+
+  <!-- ============================================================
+       GUESSPIONAGE PLAYER SCREENS
+       ============================================================ -->
+
+  <!-- GPN: you are the polled player -->
+  <section id="player-gpn-polled" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <div class="play-imposter-pill gpn-polled-pill">📊 YOU'RE THE POLLED PLAYER</div>
+    <p class="play-q-label">YOUR QUESTION</p>
+    <h2 class="play-question gpn-question-text" id="gpn-player-question">...</h2>
+    <div class="gpn-poll-input">
+      <div class="gpn-poll-percent" id="gpn-poll-percent-display">50<span class="gpn-poll-pct">%</span></div>
+      <input type="range" id="gpn-poll-slider" min="0" max="100" value="50" />
+      <div class="gpn-poll-scale">
+        <span>0%</span><span>50%</span><span>100%</span>
+      </div>
+    </div>
+    <button id="gpn-poll-submit" class="btn btn-primary btn-block">SUBMIT GUESS</button>
+    <p class="play-tip">Your goal: be as close to the actual answer as possible.</p>
+  </section>
+
+  <!-- GPN: not polled, waiting for polled player to guess -->
+  <section id="player-gpn-spectate" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <p class="play-q-label">POLLING</p>
+    <h2 class="play-question gpn-question-text" id="gpn-spectate-question">...</h2>
+    <p class="play-subtle"><strong id="gpn-spectate-name">Player</strong> is guessing...</p>
+    <p class="play-subtle">Think: do you think the real answer is HIGHER or LOWER?</p>
+    <div class="play-spinner"></div>
+  </section>
+
+  <!-- GPN: voting higher/lower -->
+  <section id="player-gpn-voting" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <p class="play-q-label">QUESTION</p>
+    <h2 class="play-question gpn-question-text" id="gpn-voting-question">...</h2>
+    <div class="gpn-guess-display">
+      <span class="gpn-guess-display-name" id="gpn-voting-name">Player</span>
+      <span class="gpn-guess-display-says">guessed</span>
+      <span class="gpn-guess-display-pct" id="gpn-voting-pct">--%</span>
+    </div>
+    <p class="play-subtle">Real answer is probably...</p>
+    <div class="gpn-vote-buttons">
+      <button class="gpn-vote-btn gpn-vote-higher" id="gpn-vote-higher">
+        <span class="gpn-vote-arrow">▲</span>
+        <span class="gpn-vote-label">HIGHER</span>
+      </button>
+      <button class="gpn-vote-btn gpn-vote-lower" id="gpn-vote-lower">
+        <span class="gpn-vote-arrow">▼</span>
+        <span class="gpn-vote-label">LOWER</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- GPN: voted -->
+  <section id="player-gpn-voted" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">VOTE LOCKED</h2>
+    <p class="play-subtle">You said <strong id="gpn-voted-direction">HIGHER</strong></p>
+    <p class="play-subtle">Look at the big screen for results.</p>
+    <div class="play-spinner"></div>
+  </section>
+
+  <!-- GPN: polled, waiting for votes -->
+  <section id="player-gpn-polled-waiting" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">LOCKED IN</h2>
+    <p class="play-name-big"><span id="gpn-polled-my-guess">--</span>%</p>
+    <p class="play-subtle">Waiting for everyone else to vote higher or lower...</p>
+    <div class="play-spinner"></div>
+  </section>
+
+  <!-- ============================================================ -->
 
   <!-- PLAYER FINAL -->
   <section id="player-final" class="play-screen">
