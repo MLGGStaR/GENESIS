@@ -65,9 +65,9 @@ const ALL_SCREENS = [
   'player-lobby', 'player-answering', 'player-waiting',
   'player-voting', 'player-voted', 'player-round-results', 'player-final',
   // Guesspionage — host
-  'host-gpn-spin', 'host-gpn-guessing', 'host-gpn-voting', 'host-gpn-results',
+  'host-gpn-guessing', 'host-gpn-voting', 'host-gpn-results',
   // Guesspionage — player
-  'player-gpn-spin', 'player-gpn-polled', 'player-gpn-spectate',
+  'player-gpn-polled', 'player-gpn-spectate',
   'player-gpn-voting', 'player-gpn-voted', 'player-gpn-polled-waiting',
 ];
 
@@ -370,11 +370,6 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     }));
     const polled = players.find(p => p.id === state.polledId);
     const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players };
-    if (state.phase === 'GPN_SPIN') {
-      base.polledId = state.polledId;
-      base.polledName = polled?.name || '?';
-      base.polledColor = polled?.color || '#888';
-    }
     if (state.phase === 'GPN_GUESSING') {
       base.question = state.question?.q;
       base.polledId = state.polledId;
@@ -413,38 +408,25 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     state.polledGuess = null;
     state.question = pickQuestion();
     state.polledId = pickPolled();
-
-    // Phase 1: spinning the wheel
-    state.phase = 'GPN_SPIN';
+    state.phase = 'GPN_GUESSING';
     emitPublic();
+    const polled = getPlayers().find(p => p.id === state.polledId);
     for (const p of getPlayers()) {
-      sendPrivate(p.id, { phase: 'GPN_SPIN' });
-    }
-
-    // Phase 2 (after wheel animation): start the actual guessing
-    setTimeout(() => {
-      // Bail if game state has moved on (host closed room, etc.)
-      if (state.phase !== 'GPN_SPIN') return;
-      state.phase = 'GPN_GUESSING';
-      emitPublic();
-      const polled = getPlayers().find(p => p.id === state.polledId);
-      for (const p of getPlayers()) {
-        if (p.id === state.polledId) {
-          sendPrivate(p.id, {
-            phase: 'GPN_GUESSING_POLLED',
-            question: state.question.q,
-            round: state.round,
-            totalRounds: state.totalRounds,
-          });
-        } else {
-          sendPrivate(p.id, {
-            phase: 'GPN_GUESSING_SPECTATE',
-            question: state.question.q,
-            polledName: polled?.name || '?',
-          });
-        }
+      if (p.id === state.polledId) {
+        sendPrivate(p.id, {
+          phase: 'GPN_GUESSING_POLLED',
+          question: state.question.q,
+          round: state.round,
+          totalRounds: state.totalRounds,
+        });
+      } else {
+        sendPrivate(p.id, {
+          phase: 'GPN_GUESSING_SPECTATE',
+          question: state.question.q,
+          polledName: polled?.name || '?',
+        });
       }
-    }, 4200); // wheel spins ~3s + result reveal ~1.2s
+    }
   }
 
   function endRound() {
@@ -725,10 +707,10 @@ function handleGuestMessage(conn, data) {
   }
 }
 
-// Update the host TV's mirror knob while the polled player drags.
+// Update the host TV's mirror fill ring while the polled player drags.
 function updateHostLiveGuess(value) {
-  const k = knobs.get('gpn-knob-host');
-  if (k) setKnobValue(k, value);
+  const r = fillRings.get('gpn-fill-host');
+  if (r) setFillValue(r, value);
 }
 
 function handleGuestDisconnect(peerId) {
@@ -925,17 +907,13 @@ function handlePrivateMessage(msg) {
     show('player-lobby');
   }
   // ----- Guesspionage -----
-  else if (msg.phase === 'GPN_SPIN') {
-    applyPlayerColor();
-    show('player-gpn-spin');
-  } else if (msg.phase === 'GPN_GUESSING_POLLED') {
+  else if (msg.phase === 'GPN_GUESSING_POLLED') {
     $('gpn-player-question').textContent = msg.question;
-    // Reset the knob to 0%
-    const polledKnob = knobs.get('gpn-knob-polled');
-    if (polledKnob) setKnobValue(polledKnob, 0);
+    // Reset the polled fill ring to 0%
+    const polledRing = fillRings.get('gpn-fill-polled');
+    if (polledRing) setFillValue(polledRing, 0);
     applyPlayerColor();
     show('player-gpn-polled');
-    // Send initial live value so the host + spectators show the same starting state
     sendPollLive(0);
   } else if (msg.phase === 'GPN_GUESSING_SPECTATE') {
     $('gpn-spectate-question').textContent = msg.question;
@@ -1021,11 +999,6 @@ function renderHostGameOrLobby(state) {
       status.textContent = `🦊 IMPOSTER ESCAPED — +${state.lastResults.imposterPoints} points`;
     }
     renderLeaderboard($('results-leaderboard'), state.players);
-  } else if (state.phase === 'GPN_SPIN') {
-    show('host-gpn-spin');
-    $('gpn-spin-round').textContent = state.round;
-    $('gpn-spin-total').textContent = state.totalRounds;
-    renderAndSpinWheel(state.players, state.polledId, state.polledName, state.polledColor);
   } else if (state.phase === 'GPN_GUESSING') {
     show('host-gpn-guessing');
     $('gpn-round').textContent = state.round;
@@ -1209,99 +1182,10 @@ function renderVoteButtons(candidates) {
 }
 
 // ============================================================
-// Guesspionage host extras: wheel spin + count-up animation
+// Guesspionage host extras: count-up animation
 // ============================================================
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-
-function renderAndSpinWheel(players, polledId, polledName, polledColor) {
-  const wheelGroup = $('gpn-wheel-rotating');
-  if (!wheelGroup) return;
-
-  // Reset rotation instantly so each new spin starts fresh
-  wheelGroup.style.transition = 'none';
-  wheelGroup.style.transform = 'rotate(0deg)';
-  // Force reflow so the transition restart is honored
-  void wheelGroup.getBoundingClientRect();
-
-  // Hide previous result label
-  const resultEl = $('gpn-spin-result');
-  resultEl.hidden = true;
-  $('gpn-spin-sub').textContent = 'Picking the polled player...';
-
-  // Build segments
-  wheelGroup.innerHTML = '';
-  const r = 100;
-  const n = Math.max(1, players.length);
-  const segDeg = 360 / n;
-  const polledIdx = players.findIndex(p => p.id === polledId);
-
-  players.forEach((p, i) => {
-    // Start angle is at top (-90deg) so segment 0 is centered at -90 + segDeg/2.
-    const startA = -90 + i * segDeg;
-    const endA = -90 + (i + 1) * segDeg;
-    const sA = startA * Math.PI / 180;
-    const eA = endA * Math.PI / 180;
-    const x1 = r * Math.cos(sA), y1 = r * Math.sin(sA);
-    const x2 = r * Math.cos(eA), y2 = r * Math.sin(eA);
-    const largeArc = segDeg > 180 ? 1 : 0;
-    const d = `M0,0 L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${largeArc},1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
-
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', d);
-    path.setAttribute('fill', p.color || '#888');
-    path.setAttribute('class', 'gpn-wheel-segment');
-    path.style.color = p.color || '#888'; // for the winner glow
-    path.dataset.player = p.id;
-    wheelGroup.appendChild(path);
-
-    // Player name (or initials if many players)
-    const midA = (startA + endA) / 2;
-    const tr = 0.65 * r;
-    const tx = tr * Math.cos(midA * Math.PI / 180);
-    const ty = tr * Math.sin(midA * Math.PI / 180);
-    const text = document.createElementNS(SVG_NS, 'text');
-    text.setAttribute('x', tx.toFixed(2));
-    text.setAttribute('y', ty.toFixed(2));
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('dominant-baseline', 'middle');
-    text.setAttribute('class', 'gpn-wheel-text');
-    // Rotate text radially so it reads outward in each segment
-    text.setAttribute('transform', `rotate(${midA + 90}, ${tx.toFixed(2)}, ${ty.toFixed(2)})`);
-    const label = (p.name || '?').slice(0, n > 6 ? 4 : 8).toUpperCase();
-    text.setAttribute('font-size', n > 8 ? '10' : n > 6 ? '11' : '13');
-    text.textContent = label;
-    wheelGroup.appendChild(text);
-  });
-
-  // Compute final rotation: land the polled segment center under the top pointer.
-  // Segment i is centered at -90 + i*segDeg + segDeg/2 (in wheel-local coords).
-  // We want that angle to end up at -90 (top), so rotate by -(segCenterOffset).
-  // Add 5 full rotations for drama.
-  const segCenterFromTop = polledIdx * segDeg + segDeg / 2; // 0..360
-  const finalRot = 360 * 5 + (360 - segCenterFromTop);
-
-  // Allow the browser to commit the reset, then animate
-  requestAnimationFrame(() => {
-    wheelGroup.style.transition = 'transform 3000ms cubic-bezier(0.18, 0.89, 0.21, 1)';
-    wheelGroup.style.transform = `rotate(${finalRot}deg)`;
-  });
-
-  // After spin lands, highlight the winning segment + show the name
-  setTimeout(() => {
-    const winnerSeg = wheelGroup.querySelector(`path[data-player="${cssEscape(polledId)}"]`);
-    if (winnerSeg) winnerSeg.classList.add('winner');
-    $('gpn-spin-name').textContent = (polledName || '?').toUpperCase();
-    $('gpn-spin-dot').style.background = polledColor || '#888';
-    resultEl.hidden = false;
-    $('gpn-spin-sub').textContent = 'You\'re up!';
-  }, 3050);
-}
-
-function cssEscape(s) {
-  if (window.CSS && CSS.escape) return CSS.escape(s);
-  return String(s).replace(/"/g, '\\"');
-}
 
 function animateCountUp(el, from, to, durationMs, suffix) {
   if (!el) return;
@@ -1440,77 +1324,43 @@ $('answer-form').addEventListener('submit', (e) => {
 });
 
 // ============================================================
-// PERCENTAGE KNOB (replaces the old slider)
-//   Wheel rotates 0..360°, mapping to 0..100%.
-//   Polled player drags it; host TV + spectators mirror via pollLive.
+// PERCENTAGE FILL RING (Apple-Watch-style ring that fills 0% → 100%)
+//   Polled player drags around it; host TV + spectators mirror via pollLive.
 // ============================================================
 
-const knobs = new Map(); // containerId -> knob state
+// Ring r=92 → circumference = 2π·92 ≈ 578.05
+const FILL_CIRCUMFERENCE = 2 * Math.PI * 92;
+const fillRings = new Map(); // containerId -> ring state
 
-function buildKnobTicks(rotatingGroup) {
-  rotatingGroup.innerHTML = '';
-  // Tick i placed CCW from top so that finger CW drag = value increases AND
-  // the tick under the pointer matches the displayed %.
-  for (let i = 0; i < 100; i += 5) {
-    const angle = -90 - (i / 100) * 360;
-    const a = angle * Math.PI / 180;
-    const isMajor = i % 25 === 0;
-    const inner = isMajor ? 68 : 76;
-    const outer = 84;
-    const x1 = inner * Math.cos(a), y1 = inner * Math.sin(a);
-    const x2 = outer * Math.cos(a), y2 = outer * Math.sin(a);
-    const tick = document.createElementNS(SVG_NS, 'line');
-    tick.setAttribute('x1', x1.toFixed(1));
-    tick.setAttribute('y1', y1.toFixed(1));
-    tick.setAttribute('x2', x2.toFixed(1));
-    tick.setAttribute('y2', y2.toFixed(1));
-    tick.setAttribute('class', isMajor ? 'tick-major' : 'tick-minor');
-    rotatingGroup.appendChild(tick);
-    if (isMajor) {
-      const lr = 54;
-      const lx = lr * Math.cos(a), ly = lr * Math.sin(a);
-      const text = document.createElementNS(SVG_NS, 'text');
-      text.setAttribute('x', lx.toFixed(1));
-      text.setAttribute('y', ly.toFixed(1));
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'middle');
-      text.setAttribute('class', 'tick-label');
-      // Counter-rotate the label so the number always reads upright
-      // when the wheel is at rest at value=0.
-      text.setAttribute('transform', `rotate(${-(angle + 90)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})`);
-      text.textContent = i;
-      rotatingGroup.appendChild(text);
-    }
-  }
-}
-
-function initKnob(containerId, options = {}) {
+function initFillRing(containerId, options = {}) {
   const container = document.getElementById(containerId);
   if (!container) return null;
-  const rotating = container.querySelector('[data-knob-rotating]');
-  const pctEl = container.querySelector('[data-knob-pct]');
-  buildKnobTicks(rotating);
-  const knob = { container, rotating, pctEl, rotation: 0, value: 0, interactive: !!options.interactive };
-  knobs.set(containerId, knob);
-  if (options.interactive) setupKnobDrag(knob, options.onChange);
-  setKnobValue(knob, 0);
-  return knob;
+  const arcEl = container.querySelector('[data-fill-arc]');
+  const pctEl = container.querySelector('[data-fill-pct]');
+  if (arcEl) arcEl.setAttribute('stroke-dasharray', FILL_CIRCUMFERENCE.toFixed(2));
+  const ring = { container, arcEl, pctEl, value: 0, interactive: !!options.interactive };
+  fillRings.set(containerId, ring);
+  if (options.interactive) setupRingDrag(ring, options.onChange);
+  setFillValue(ring, 0);
+  return ring;
 }
 
-function setKnobValue(knob, value) {
+function setFillValue(ring, value) {
   const v = Math.max(0, Math.min(100, Math.round(value)));
-  knob.value = v;
-  knob.rotation = v * 3.6;
-  knob.rotating.style.transform = `rotate(${knob.rotation}deg)`;
-  if (knob.pctEl) knob.pctEl.textContent = v;
+  ring.value = v;
+  if (ring.arcEl) {
+    const offset = FILL_CIRCUMFERENCE * (1 - v / 100);
+    ring.arcEl.setAttribute('stroke-dashoffset', offset.toFixed(2));
+  }
+  if (ring.pctEl) ring.pctEl.textContent = v;
 }
 
-function setupKnobDrag(knob, onChange) {
+function setupRingDrag(ring, onChange) {
   let dragging = false;
   let lastAngle = 0;
 
   function angleFromCenter(clientX, clientY) {
-    const rect = knob.container.getBoundingClientRect();
+    const rect = ring.container.getBoundingClientRect();
     const cx = rect.left + rect.width / 2;
     const cy = rect.top + rect.height / 2;
     return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
@@ -1519,8 +1369,8 @@ function setupKnobDrag(knob, onChange) {
   function onDown(e) {
     dragging = true;
     lastAngle = angleFromCenter(e.clientX, e.clientY);
-    knob.container.setPointerCapture && knob.container.setPointerCapture(e.pointerId);
-    knob.container.classList.add('dragging');
+    ring.container.setPointerCapture && ring.container.setPointerCapture(e.pointerId);
+    ring.container.classList.add('dragging');
     e.preventDefault();
   }
   function onMove(e) {
@@ -1530,22 +1380,18 @@ function setupKnobDrag(knob, onChange) {
     if (delta > 180) delta -= 360;
     if (delta < -180) delta += 360;
     lastAngle = a;
-    // Finger CW (delta > 0) → value increases.
-    let newRotation = Math.max(0, Math.min(360, knob.rotation + delta));
-    knob.rotation = newRotation;
-    const v = Math.max(0, Math.min(100, Math.round(newRotation / 3.6)));
-    knob.value = v;
-    knob.rotating.style.transform = `rotate(${newRotation}deg)`;
-    if (knob.pctEl) knob.pctEl.textContent = v;
-    if (onChange) onChange(v);
+    // Finger CW (delta > 0) → fill grows. 360° of drag = 100% fill.
+    const newValue = Math.max(0, Math.min(100, ring.value + delta / 3.6));
+    setFillValue(ring, newValue);
+    if (onChange) onChange(ring.value);
     e.preventDefault();
   }
   function onUp() {
     dragging = false;
-    knob.container.classList.remove('dragging');
+    ring.container.classList.remove('dragging');
   }
 
-  knob.container.addEventListener('pointerdown', onDown);
+  ring.container.addEventListener('pointerdown', onDown);
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
   window.addEventListener('pointercancel', onUp);
@@ -1572,28 +1418,28 @@ function throttleSendPollLive(value) {
   pendingLiveTimer = setTimeout(() => {
     lastLiveSentAt = Date.now();
     pendingLiveTimer = null;
-    const k = knobs.get('gpn-knob-polled');
-    sendPollLive(k ? k.value : value);
+    const r = fillRings.get('gpn-fill-polled');
+    sendPollLive(r ? r.value : value);
   }, 80);
 }
 
-// Initialize all three knobs (DOM is ready since this script loads at end of body)
-initKnob('gpn-knob-polled', { interactive: true, onChange: throttleSendPollLive });
-initKnob('gpn-knob-host', {});
-initKnob('gpn-knob-spec', {});
+// Initialize all three fill rings
+initFillRing('gpn-fill-polled', { interactive: true, onChange: throttleSendPollLive });
+initFillRing('gpn-fill-host', {});
+initFillRing('gpn-fill-spec', {});
 
 $('gpn-poll-submit').addEventListener('click', () => {
-  const k = knobs.get('gpn-knob-polled');
-  if (!k) return;
+  const r = fillRings.get('gpn-fill-polled');
+  if (!r) return;
   if (app.hostConn && app.hostConn.open) {
-    app.hostConn.send({ type: 'pollGuess', value: k.value });
+    app.hostConn.send({ type: 'pollGuess', value: r.value });
   }
 });
 
 // Mirror updates triggered by incoming pollLive messages
 function updateSpectatorLive(value) {
-  const k = knobs.get('gpn-knob-spec');
-  if (k) setKnobValue(k, value);
+  const r = fillRings.get('gpn-fill-spec');
+  if (r) setFillValue(r, value);
 }
 
 // Guesspionage: HIGHER / LOWER vote buttons

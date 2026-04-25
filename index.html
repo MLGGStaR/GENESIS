@@ -12,6 +12,18 @@
 </head>
 <body class="app-body">
 
+<!-- Shared SVG defs (referenced by all fill-ring instances) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="gpnFillGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#06b6d4" />
+      <stop offset="33%"  stop-color="#7c3aed" />
+      <stop offset="66%"  stop-color="#ff2e93" />
+      <stop offset="100%" stop-color="#facc15" />
+    </linearGradient>
+  </defs>
+</svg>
+
 <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
   <span class="theme-toggle-thumb"></span>
   <span class="theme-toggle-icon theme-toggle-icon-light">☀</span>
@@ -209,30 +221,7 @@
        GUESSPIONAGE HOST SCREENS
        ============================================================ -->
 
-  <!-- HOST GPN: spinning wheel to pick polled player -->
-  <section id="host-gpn-spin" class="screen">
-    <div class="round-banner">
-      <span class="round-banner-label">ROUND</span>
-      <span class="round-banner-num" id="gpn-spin-round">1</span>
-      <span class="round-banner-of">/ <span id="gpn-spin-total">5</span></span>
-    </div>
-    <h1 class="big-headline">SPIN THE WHEEL</h1>
-    <p class="big-sub" id="gpn-spin-sub">Picking the polled player...</p>
-    <div class="gpn-wheel-wrap">
-      <div class="gpn-wheel-pointer">▼</div>
-      <svg class="gpn-wheel" viewBox="-110 -110 220 220" aria-hidden="true">
-        <g id="gpn-wheel-rotating"></g>
-        <circle cx="0" cy="0" r="22" class="gpn-wheel-hub" />
-      </svg>
-    </div>
-    <div class="gpn-wheel-result" id="gpn-spin-result" hidden>
-      <span class="gpn-spin-label">POLLED PLAYER:</span>
-      <span class="gpn-polled-dot" id="gpn-spin-dot"></span>
-      <span class="gpn-polled-name" id="gpn-spin-name">PLAYER</span>
-    </div>
-  </section>
-
-  <!-- HOST GPN: polled player is guessing % (with live slider sync) -->
+  <!-- HOST GPN: polled player is guessing % (with live fill ring sync) -->
   <section id="host-gpn-guessing" class="screen">
     <div class="round-banner">
       <span class="round-banner-label">ROUND</span>
@@ -246,15 +235,16 @@
       <span class="gpn-polled-name" id="gpn-polled-name-1">PLAYER</span>
       <span class="gpn-polled-text">is guessing...</span>
     </div>
-    <div class="gpn-knob gpn-knob-host" id="gpn-knob-host">
-      <svg class="gpn-knob-svg" viewBox="-110 -110 220 220">
-        <circle class="gpn-knob-rim" cx="0" cy="0" r="92" fill="none" stroke="url(#gpnKnobRim)" stroke-width="22" />
-        <g class="gpn-knob-rotating" data-knob-rotating></g>
-        <polygon class="gpn-knob-pointer" points="0,-104 -10,-78 10,-78" />
-        <circle class="gpn-knob-hub" cx="0" cy="0" r="32" />
+    <div class="gpn-fill gpn-fill-host" id="gpn-fill-host">
+      <svg class="gpn-fill-svg" viewBox="0 0 220 220">
+        <circle class="gpn-fill-bg" cx="110" cy="110" r="92" />
+        <circle class="gpn-fill-fg" cx="110" cy="110" r="92"
+                stroke-dasharray="578" stroke-dashoffset="578"
+                transform="rotate(-90 110 110)"
+                data-fill-arc />
       </svg>
-      <div class="gpn-knob-display">
-        <span class="gpn-knob-pct" data-knob-pct>0</span><span class="gpn-knob-suffix">%</span>
+      <div class="gpn-fill-display">
+        <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
       </div>
     </div>
   </section>
@@ -380,39 +370,23 @@
        GUESSPIONAGE PLAYER SCREENS
        ============================================================ -->
 
-  <!-- GPN: spinning the wheel — everyone sees this -->
-  <section id="player-gpn-spin" class="play-screen">
-    <div class="play-banner player-color-banner"></div>
-    <h2 class="play-h2">SPINNING THE WHEEL</h2>
-    <p class="play-subtle">Picking who answers this round...</p>
-    <div class="play-spinner"></div>
-    <p class="play-subtle">Look at the big screen!</p>
-  </section>
-
   <!-- GPN: you are the polled player -->
   <section id="player-gpn-polled" class="play-screen">
     <div class="play-banner player-color-banner"></div>
     <div class="play-imposter-pill gpn-polled-pill">📊 YOU'RE THE POLLED PLAYER</div>
     <p class="play-q-label">YOUR QUESTION</p>
     <h2 class="play-question gpn-question-text" id="gpn-player-question">...</h2>
-    <p class="play-tip" style="margin:6px 0 4px">Spin the wheel to set your %</p>
-    <div class="gpn-knob gpn-knob-interactive" id="gpn-knob-polled">
-      <svg class="gpn-knob-svg" viewBox="-110 -110 220 220">
-        <defs>
-          <linearGradient id="gpnKnobRim" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%"   stop-color="#06b6d4" />
-            <stop offset="33%"  stop-color="#7c3aed" />
-            <stop offset="66%"  stop-color="#ff2e93" />
-            <stop offset="100%" stop-color="#facc15" />
-          </linearGradient>
-        </defs>
-        <circle class="gpn-knob-rim" cx="0" cy="0" r="92" fill="none" stroke="url(#gpnKnobRim)" stroke-width="22" />
-        <g class="gpn-knob-rotating" data-knob-rotating></g>
-        <polygon class="gpn-knob-pointer" points="0,-104 -10,-78 10,-78" />
-        <circle class="gpn-knob-hub" cx="0" cy="0" r="32" />
+    <p class="play-tip" style="margin:6px 0 4px">Drag around the ring to fill it</p>
+    <div class="gpn-fill gpn-fill-interactive" id="gpn-fill-polled">
+      <svg class="gpn-fill-svg" viewBox="0 0 220 220">
+        <circle class="gpn-fill-bg" cx="110" cy="110" r="92" />
+        <circle class="gpn-fill-fg" cx="110" cy="110" r="92"
+                stroke-dasharray="578" stroke-dashoffset="578"
+                transform="rotate(-90 110 110)"
+                data-fill-arc />
       </svg>
-      <div class="gpn-knob-display">
-        <span class="gpn-knob-pct" data-knob-pct>0</span><span class="gpn-knob-suffix">%</span>
+      <div class="gpn-fill-display">
+        <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
       </div>
     </div>
     <button id="gpn-poll-submit" class="btn btn-primary btn-block">SUBMIT GUESS</button>
@@ -424,15 +398,16 @@
     <p class="play-q-label">POLLING</p>
     <h2 class="play-question gpn-question-text" id="gpn-spectate-question">...</h2>
     <p class="play-subtle"><strong id="gpn-spectate-name">Player</strong> is spinning the wheel...</p>
-    <div class="gpn-knob gpn-knob-spec" id="gpn-knob-spec">
-      <svg class="gpn-knob-svg" viewBox="-110 -110 220 220">
-        <circle class="gpn-knob-rim" cx="0" cy="0" r="92" fill="none" stroke="url(#gpnKnobRim)" stroke-width="22" />
-        <g class="gpn-knob-rotating" data-knob-rotating></g>
-        <polygon class="gpn-knob-pointer" points="0,-104 -10,-78 10,-78" />
-        <circle class="gpn-knob-hub" cx="0" cy="0" r="32" />
+    <div class="gpn-fill gpn-fill-spec" id="gpn-fill-spec">
+      <svg class="gpn-fill-svg" viewBox="0 0 220 220">
+        <circle class="gpn-fill-bg" cx="110" cy="110" r="92" />
+        <circle class="gpn-fill-fg" cx="110" cy="110" r="92"
+                stroke-dasharray="578" stroke-dashoffset="578"
+                transform="rotate(-90 110 110)"
+                data-fill-arc />
       </svg>
-      <div class="gpn-knob-display">
-        <span class="gpn-knob-pct" data-knob-pct>0</span><span class="gpn-knob-suffix">%</span>
+      <div class="gpn-fill-display">
+        <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
       </div>
     </div>
     <p class="play-subtle">HIGHER or LOWER than the real answer?</p>
