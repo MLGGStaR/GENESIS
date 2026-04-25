@@ -1799,8 +1799,8 @@ h1, h2, h3 { margin: 0; }
 }
 .gpn-fill-host .gpn-fill-pct { font-size: clamp(64px, 7vw, 110px); }
 .gpn-fill-suffix {
-  font-size: 0.5em;
-  margin-left: 4px;
+  font-size: 0.85em;
+  margin-left: 6px;
 }
 
 /* ============================================================
