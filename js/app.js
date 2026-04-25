@@ -725,15 +725,10 @@ function handleGuestMessage(conn, data) {
   }
 }
 
-// Update the host's own live-% display while the polled player drags.
+// Update the host TV's mirror knob while the polled player drags.
 function updateHostLiveGuess(value) {
-  const v = Math.max(0, Math.min(100, Math.round(Number(value))));
-  const pctEl = document.getElementById('gpn-live-host-pct');
-  const barEl = document.getElementById('gpn-live-host-bar');
-  const thumbEl = document.getElementById('gpn-live-host-thumb');
-  if (pctEl) pctEl.firstChild.nodeValue = String(v);
-  if (barEl) barEl.style.width = v + '%';
-  if (thumbEl) thumbEl.style.left = v + '%';
+  const k = knobs.get('gpn-knob-host');
+  if (k) setKnobValue(k, value);
 }
 
 function handleGuestDisconnect(peerId) {
@@ -935,18 +930,17 @@ function handlePrivateMessage(msg) {
     show('player-gpn-spin');
   } else if (msg.phase === 'GPN_GUESSING_POLLED') {
     $('gpn-player-question').textContent = msg.question;
-    // Reset slider to 50
-    $('gpn-poll-slider').value = 50;
-    $('gpn-poll-percent-display').firstChild.nodeValue = '50';
+    // Reset the knob to 0%
+    const polledKnob = knobs.get('gpn-knob-polled');
+    if (polledKnob) setKnobValue(polledKnob, 0);
     applyPlayerColor();
     show('player-gpn-polled');
-    // Send initial live value so spectators don't see stale data
-    sendPollLive(50);
+    // Send initial live value so the host + spectators show the same starting state
+    sendPollLive(0);
   } else if (msg.phase === 'GPN_GUESSING_SPECTATE') {
     $('gpn-spectate-question').textContent = msg.question;
     $('gpn-spectate-name').textContent = msg.polledName || '?';
-    // Reset live display to 50
-    updateSpectatorLive(50);
+    updateSpectatorLive(0);
     applyPlayerColor();
     show('player-gpn-spectate');
   } else if (msg.phase === 'GPN_LIVE_GUESS') {
@@ -1039,8 +1033,7 @@ function renderHostGameOrLobby(state) {
     $('gpn-host-question-1').textContent = state.question || '';
     $('gpn-polled-name-1').textContent = (state.polledName || '?').toUpperCase();
     $('gpn-polled-dot-1').style.background = state.polledColor || '#888';
-    // Reset live bar to 50%
-    updateHostLiveGuess(50);
+    updateHostLiveGuess(0);
   } else if (state.phase === 'GPN_VOTING') {
     show('host-gpn-voting');
     $('gpn-round-2').textContent = state.round;
@@ -1072,6 +1065,8 @@ function renderHostGameOrLobby(state) {
       bullseye.className = 'gpn-bullseye-banner';
       bullseye.textContent = '🎯 BULLSEYE!';
       $('gpn-results-arrow').parentElement.parentElement.appendChild(bullseye);
+      // Confetti burst when polled player nailed it
+      setTimeout(() => spawnConfetti({ count: 100, spread: 600 }), 800);
     }
     // Animate actual % counting up from 0
     animateCountUp($('gpn-results-actual'), 0, state.actual ?? 0, 1400, '%');
@@ -1079,6 +1074,9 @@ function renderHostGameOrLobby(state) {
   } else if (state.phase === 'FINAL_RESULTS') {
     show('host-final');
     renderFinal(state.standings);
+    // Big confetti finale
+    setTimeout(() => spawnConfetti({ count: 140, spread: 800, fall: 900 }), 250);
+    setTimeout(() => spawnConfetti({ count: 100, spread: 800, fall: 900, originY: window.innerHeight / 4 }), 900);
   }
 }
 
@@ -1323,6 +1321,38 @@ function animateCountUp(el, from, to, durationMs, suffix) {
 }
 
 // ============================================================
+// CONFETTI — spawn a burst from the center of the screen (or an element).
+// ============================================================
+const CONFETTI_COLORS = ['#ff2e93', '#7c3aed', '#06b6d4', '#facc15', '#22c55e', '#f97316'];
+
+function spawnConfetti({ count = 80, originX, originY, spread = 700, fall = 700 } = {}) {
+  const sx = originX != null ? originX : window.innerWidth / 2;
+  const sy = originY != null ? originY : window.innerHeight / 3;
+  for (let i = 0; i < count; i++) {
+    const piece = document.createElement('div');
+    piece.className = 'confetti-piece';
+    piece.style.background = CONFETTI_COLORS[i % CONFETTI_COLORS.length];
+    const dx = (Math.random() - 0.5) * spread * 2;
+    const dy = (Math.random() * 0.6 + 0.7) * fall;
+    const dr = (Math.random() - 0.5) * 1080;
+    const dur = 1800 + Math.random() * 900;
+    piece.style.setProperty('--sx', sx + 'px');
+    piece.style.setProperty('--sy', sy + 'px');
+    piece.style.setProperty('--dx', dx.toFixed(0) + 'px');
+    piece.style.setProperty('--dy', dy.toFixed(0) + 'px');
+    piece.style.setProperty('--dr', dr.toFixed(0) + 'deg');
+    piece.style.setProperty('--dur', dur + 'ms');
+    // Random shape: half are squares, half are thinner rectangles
+    if (i % 2) {
+      piece.style.width = '8px';
+      piece.style.height = '12px';
+    }
+    document.body.appendChild(piece);
+    setTimeout(() => piece.remove(), dur + 200);
+  }
+}
+
+// ============================================================
 // MENU + ENTRY UI wiring
 // ============================================================
 
@@ -1409,24 +1439,129 @@ $('answer-form').addEventListener('submit', (e) => {
   }
 });
 
-// Guesspionage: slider live update + poll guess submit
-const gpnSlider = $('gpn-poll-slider');
-const gpnPctDisplay = $('gpn-poll-percent-display');
+// ============================================================
+// PERCENTAGE KNOB (replaces the old slider)
+//   Wheel rotates 0..360°, mapping to 0..100%.
+//   Polled player drags it; host TV + spectators mirror via pollLive.
+// ============================================================
 
+const knobs = new Map(); // containerId -> knob state
+
+function buildKnobTicks(rotatingGroup) {
+  rotatingGroup.innerHTML = '';
+  // Tick i placed CCW from top so that finger CW drag = value increases AND
+  // the tick under the pointer matches the displayed %.
+  for (let i = 0; i < 100; i += 5) {
+    const angle = -90 - (i / 100) * 360;
+    const a = angle * Math.PI / 180;
+    const isMajor = i % 25 === 0;
+    const inner = isMajor ? 68 : 76;
+    const outer = 84;
+    const x1 = inner * Math.cos(a), y1 = inner * Math.sin(a);
+    const x2 = outer * Math.cos(a), y2 = outer * Math.sin(a);
+    const tick = document.createElementNS(SVG_NS, 'line');
+    tick.setAttribute('x1', x1.toFixed(1));
+    tick.setAttribute('y1', y1.toFixed(1));
+    tick.setAttribute('x2', x2.toFixed(1));
+    tick.setAttribute('y2', y2.toFixed(1));
+    tick.setAttribute('class', isMajor ? 'tick-major' : 'tick-minor');
+    rotatingGroup.appendChild(tick);
+    if (isMajor) {
+      const lr = 54;
+      const lx = lr * Math.cos(a), ly = lr * Math.sin(a);
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', lx.toFixed(1));
+      text.setAttribute('y', ly.toFixed(1));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.setAttribute('class', 'tick-label');
+      // Counter-rotate the label so the number always reads upright
+      // when the wheel is at rest at value=0.
+      text.setAttribute('transform', `rotate(${-(angle + 90)}, ${lx.toFixed(1)}, ${ly.toFixed(1)})`);
+      text.textContent = i;
+      rotatingGroup.appendChild(text);
+    }
+  }
+}
+
+function initKnob(containerId, options = {}) {
+  const container = document.getElementById(containerId);
+  if (!container) return null;
+  const rotating = container.querySelector('[data-knob-rotating]');
+  const pctEl = container.querySelector('[data-knob-pct]');
+  buildKnobTicks(rotating);
+  const knob = { container, rotating, pctEl, rotation: 0, value: 0, interactive: !!options.interactive };
+  knobs.set(containerId, knob);
+  if (options.interactive) setupKnobDrag(knob, options.onChange);
+  setKnobValue(knob, 0);
+  return knob;
+}
+
+function setKnobValue(knob, value) {
+  const v = Math.max(0, Math.min(100, Math.round(value)));
+  knob.value = v;
+  knob.rotation = v * 3.6;
+  knob.rotating.style.transform = `rotate(${knob.rotation}deg)`;
+  if (knob.pctEl) knob.pctEl.textContent = v;
+}
+
+function setupKnobDrag(knob, onChange) {
+  let dragging = false;
+  let lastAngle = 0;
+
+  function angleFromCenter(clientX, clientY) {
+    const rect = knob.container.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    return Math.atan2(clientY - cy, clientX - cx) * 180 / Math.PI;
+  }
+
+  function onDown(e) {
+    dragging = true;
+    lastAngle = angleFromCenter(e.clientX, e.clientY);
+    knob.container.setPointerCapture && knob.container.setPointerCapture(e.pointerId);
+    knob.container.classList.add('dragging');
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const a = angleFromCenter(e.clientX, e.clientY);
+    let delta = a - lastAngle;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    lastAngle = a;
+    // Finger CW (delta > 0) → value increases.
+    let newRotation = Math.max(0, Math.min(360, knob.rotation + delta));
+    knob.rotation = newRotation;
+    const v = Math.max(0, Math.min(100, Math.round(newRotation / 3.6)));
+    knob.value = v;
+    knob.rotating.style.transform = `rotate(${newRotation}deg)`;
+    if (knob.pctEl) knob.pctEl.textContent = v;
+    if (onChange) onChange(v);
+    e.preventDefault();
+  }
+  function onUp() {
+    dragging = false;
+    knob.container.classList.remove('dragging');
+  }
+
+  knob.container.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+}
+
+// Throttled live broadcast from polled player → host
 let lastLiveSentAt = 0;
 let lastLiveSentValue = -1;
 let pendingLiveTimer = null;
-
 function sendPollLive(value) {
   if (!(app.hostConn && app.hostConn.open)) return;
   if (value === lastLiveSentValue) return;
   lastLiveSentValue = value;
   app.hostConn.send({ type: 'pollLive', value });
 }
-
 function throttleSendPollLive(value) {
-  // Throttle to ~15Hz so the slider feels live but doesn't flood the channel.
-  // Always send a trailing update so the final position is in sync.
   const now = Date.now();
   if (now - lastLiveSentAt > 70) {
     lastLiveSentAt = now;
@@ -1437,32 +1572,28 @@ function throttleSendPollLive(value) {
   pendingLiveTimer = setTimeout(() => {
     lastLiveSentAt = Date.now();
     pendingLiveTimer = null;
-    sendPollLive(Number(gpnSlider.value));
+    const k = knobs.get('gpn-knob-polled');
+    sendPollLive(k ? k.value : value);
   }, 80);
 }
 
-gpnSlider.addEventListener('input', () => {
-  // Local display
-  gpnPctDisplay.firstChild.nodeValue = gpnSlider.value;
-  throttleSendPollLive(Number(gpnSlider.value));
-});
+// Initialize all three knobs (DOM is ready since this script loads at end of body)
+initKnob('gpn-knob-polled', { interactive: true, onChange: throttleSendPollLive });
+initKnob('gpn-knob-host', {});
+initKnob('gpn-knob-spec', {});
 
 $('gpn-poll-submit').addEventListener('click', () => {
-  const v = Number(gpnSlider.value);
+  const k = knobs.get('gpn-knob-polled');
+  if (!k) return;
   if (app.hostConn && app.hostConn.open) {
-    app.hostConn.send({ type: 'pollGuess', value: v });
+    app.hostConn.send({ type: 'pollGuess', value: k.value });
   }
 });
 
-// Spectator-side live display update
+// Mirror updates triggered by incoming pollLive messages
 function updateSpectatorLive(value) {
-  const v = Math.max(0, Math.min(100, Math.round(Number(value))));
-  const pctEl = $('gpn-live-spec-pct');
-  const barEl = $('gpn-live-spec-bar');
-  const thumbEl = $('gpn-live-spec-thumb');
-  if (pctEl) pctEl.firstChild.nodeValue = String(v);
-  if (barEl) barEl.style.width = v + '%';
-  if (thumbEl) thumbEl.style.left = v + '%';
+  const k = knobs.get('gpn-knob-spec');
+  if (k) setKnobValue(k, value);
 }
 
 // Guesspionage: HIGHER / LOWER vote buttons
