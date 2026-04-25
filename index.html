@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="theme-color" content="#ff3d8a" />
+<title>GENESIS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="app-body">
+
+<button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+  <span class="theme-toggle-thumb"></span>
+  <span class="theme-toggle-icon theme-toggle-icon-light">☀</span>
+  <span class="theme-toggle-icon theme-toggle-icon-dark">☾</span>
+</button>
+
+<div class="bg-blobs">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+  <div class="blob blob-4"></div>
+</div>
+
+<main id="app" class="app">
+
+  <!-- ============================================================
+       COMMON SCREENS
+       ============================================================ -->
+
+  <!-- MAIN MENU: pick a game -->
+  <section id="screen-menu" class="screen active">
+    <header class="menu-header">
+      <h1 class="logo">GENESIS</h1>
+      <p class="subtitle">party games for the couch</p>
+    </header>
+
+    <div class="game-grid">
+      <button class="game-card game-card-imposter" data-game="imposter" data-tag="2-12 players · spot the bluffer">
+        <div class="game-card-art">
+          <div class="game-card-emoji">🕵️</div>
+        </div>
+        <div class="game-card-body">
+          <div class="game-card-title">IMPOSTER</div>
+          <div class="game-card-tag">2-12 players · spot the bluffer</div>
+        </div>
+      </button>
+
+      <div class="game-card game-card-soon">
+        <div class="game-card-art">
+          <div class="game-card-emoji">✨</div>
+        </div>
+        <div class="game-card-body">
+          <div class="game-card-title">COMING SOON</div>
+          <div class="game-card-tag">more chaos incoming</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="menu-tip">Tap a game to join an existing room or host a new one.</p>
+  </section>
+
+  <!-- GAME ENTRY: name + code (join), or host new -->
+  <section id="screen-entry" class="screen">
+    <header class="lobby-header">
+      <button class="back-btn" id="entry-back" aria-label="Back to menu">←</button>
+      <h1 class="lobby-title" id="entry-title">IMPOSTER</h1>
+    </header>
+    <p class="entry-game-tag" id="entry-tag">2-12 players · spot the bluffer</p>
+
+    <div class="entry-grid">
+      <div class="entry-card">
+        <div class="entry-card-icon">📱</div>
+        <h2 class="entry-card-title">JOIN A ROOM</h2>
+        <p class="entry-card-sub">on your phone</p>
+        <form id="entry-join-form" class="join-form" autocomplete="off">
+          <label class="play-field">
+            <span class="play-field-label">YOUR NAME</span>
+            <input id="entry-name" type="text" maxlength="16" placeholder="Type a name" autocapitalize="words" />
+          </label>
+          <label class="play-field">
+            <span class="play-field-label">ROOM CODE</span>
+            <input id="entry-code" type="text" inputmode="text" maxlength="4" placeholder="XXXX" autocapitalize="characters" spellcheck="false" />
+          </label>
+          <button type="submit" class="btn btn-primary btn-block">JOIN</button>
+          <p id="entry-error" class="play-error"></p>
+        </form>
+      </div>
+
+      <div class="entry-divider"><span>OR</span></div>
+
+      <div class="entry-card">
+        <div class="entry-card-icon">🖥️</div>
+        <h2 class="entry-card-title">HOST A NEW ROOM</h2>
+        <p class="entry-card-sub">on this screen / TV</p>
+        <button id="entry-host-btn" class="btn btn-secondary btn-block">START NEW ROOM</button>
+        <p class="entry-card-foot">A 4-letter code will appear for friends to join.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       HOST (TV / BIG SCREEN) VIEWS
+       ============================================================ -->
+
+  <!-- HOST LOBBY: show code, players, start button -->
+  <section id="host-lobby" class="screen">
+    <header class="lobby-header">
+      <button class="back-btn" id="host-back" aria-label="Close room">←</button>
+      <h1 class="lobby-title" id="host-lobby-title">IMPOSTER</h1>
+    </header>
+
+    <div class="room-code-panel">
+      <div class="join-label">ROOM CODE</div>
+      <div class="room-code" id="host-room-code">----</div>
+      <p class="room-code-hint">Friends: open this site, tap IMPOSTER, then JOIN with the code.</p>
+    </div>
+
+    <h2 class="lobby-section-title">PLAYERS</h2>
+    <div class="players-grid" id="host-players-grid">
+      <p class="lobby-empty">Waiting for players to join...</p>
+    </div>
+
+    <div class="lobby-cta">
+      <p id="host-lobby-status" class="lobby-status">Need at least 2 players</p>
+      <button id="host-start-btn" class="btn btn-primary btn-huge" disabled>START GAME</button>
+    </div>
+  </section>
+
+  <!-- HOST: ANSWERING -->
+  <section id="host-answering" class="screen">
+    <div class="round-banner">
+      <span class="round-banner-label">ROUND</span>
+      <span class="round-banner-num" id="answering-round">1</span>
+      <span class="round-banner-of">/ <span id="answering-total">5</span></span>
+    </div>
+    <h1 class="big-headline">CHECK YOUR PHONES</h1>
+    <p class="big-sub">Type your answer. Don't say it out loud.</p>
+    <div class="progress-circles" id="answering-progress"></div>
+    <p class="progress-counter"><span id="answering-count">0</span> / <span id="answering-total-count">0</span> answered</p>
+  </section>
+
+  <!-- HOST: REVEAL ANSWERS -->
+  <section id="host-reveal-answers" class="screen">
+    <h1 class="big-headline">THE ANSWERS</h1>
+    <p class="big-sub">but what was the question? 🤔</p>
+    <div class="answers-grid" id="reveal-answers-grid"></div>
+    <div class="screen-cta">
+      <button class="btn btn-primary" id="reveal-answers-next">REVEAL THE QUESTION</button>
+    </div>
+  </section>
+
+  <!-- HOST: REVEAL QUESTION -->
+  <section id="host-reveal-question" class="screen">
+    <p class="reveal-q-label">EVERYONE WAS ANSWERING:</p>
+    <h1 class="reveal-q-text" id="reveal-question-text">...</h1>
+    <p class="big-sub">Except one person. Who's the imposter?</p>
+    <div class="answers-grid answers-grid-small" id="reveal-question-answers"></div>
+    <div class="screen-cta">
+      <button class="btn btn-primary" id="reveal-question-next">START VOTING</button>
+    </div>
+  </section>
+
+  <!-- HOST: VOTING -->
+  <section id="host-voting" class="screen">
+    <p class="reveal-q-label">EVERYONE WAS ANSWERING:</p>
+    <h2 class="reveal-q-text reveal-q-text-small" id="voting-question-text">...</h2>
+    <h1 class="big-headline">VOTE ON YOUR PHONE</h1>
+    <div class="answers-grid answers-grid-small" id="voting-answers"></div>
+    <p class="progress-counter"><span id="voting-count">0</span> / <span id="voting-total-count">0</span> voted</p>
+  </section>
+
+  <!-- HOST: ROUND RESULTS -->
+  <section id="host-round-results" class="screen">
+    <p class="round-banner-label">THE IMPOSTER WAS</p>
+    <h1 class="big-headline imposter-name" id="results-imposter-name">...</h1>
+    <div class="results-questions">
+      <div class="results-q-card">
+        <div class="results-q-label">EVERYONE GOT</div>
+        <div class="results-q-text" id="results-common-q">...</div>
+      </div>
+      <div class="results-q-card results-q-card-imposter">
+        <div class="results-q-label">IMPOSTER GOT</div>
+        <div class="results-q-text" id="results-imposter-q">...</div>
+      </div>
+    </div>
+    <div class="results-status" id="results-caught-status">...</div>
+    <div class="results-leaderboard" id="results-leaderboard"></div>
+    <div class="screen-cta">
+      <button class="btn btn-primary" id="results-next">NEXT ROUND</button>
+    </div>
+  </section>
+
+  <!-- HOST: FINAL -->
+  <section id="host-final" class="screen">
+    <h1 class="big-headline">🏆 WINNER 🏆</h1>
+    <div id="final-podium" class="final-podium"></div>
+    <div id="final-rest" class="final-rest"></div>
+    <div class="screen-cta">
+      <button class="btn btn-primary" id="final-back">BACK TO MENU</button>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PLAYER (PHONE) VIEWS
+       ============================================================ -->
+
+  <!-- PLAYER LOBBY -->
+  <section id="player-lobby" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">YOU'RE IN</h2>
+    <p class="play-name-big" id="player-lobby-name">Player</p>
+    <div class="play-room-pill">
+      <span class="play-room-pill-label">ROOM</span>
+      <span class="play-room-pill-code" id="player-lobby-code">----</span>
+    </div>
+    <p class="play-subtle">Look at the big screen.</p>
+    <p class="play-subtle play-status" id="player-lobby-status">Waiting for the host to start...</p>
+  </section>
+
+  <!-- PLAYER ANSWERING -->
+  <section id="player-answering" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <div class="play-imposter-pill" id="imposter-pill" hidden>👹 YOU ARE THE IMPOSTER</div>
+    <p class="play-q-label">YOUR QUESTION</p>
+    <h2 class="play-question" id="play-question-text">...</h2>
+    <form id="answer-form" class="answer-form" autocomplete="off">
+      <input id="answer-input" type="text" maxlength="80" placeholder="Type your answer" autocapitalize="sentences" />
+      <button type="submit" class="btn btn-primary btn-block">SUBMIT</button>
+    </form>
+    <p class="play-tip" id="play-tip">Tip: keep your answer short — one or two words is best.</p>
+  </section>
+
+  <!-- PLAYER WAITING -->
+  <section id="player-waiting" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">LOCKED IN</h2>
+    <p class="play-name-big">"<span id="player-my-answer">...</span>"</p>
+    <p class="play-subtle">Waiting for everyone else...</p>
+    <div class="play-spinner"></div>
+  </section>
+
+  <!-- PLAYER VOTING -->
+  <section id="player-voting" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">WHO'S THE IMPOSTER?</h2>
+    <div class="vote-grid" id="vote-grid"></div>
+  </section>
+
+  <!-- PLAYER VOTED -->
+  <section id="player-voted" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">VOTE LOCKED</h2>
+    <p class="play-subtle">You voted for <strong id="voted-target">...</strong></p>
+    <p class="play-subtle">Look at the big screen for results.</p>
+    <div class="play-spinner"></div>
+  </section>
+
+  <!-- PLAYER ROUND RESULTS -->
+  <section id="player-round-results" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">ROUND OVER</h2>
+    <p class="play-subtle">Look at the big screen.</p>
+  </section>
+
+  <!-- PLAYER FINAL -->
+  <section id="player-final" class="play-screen">
+    <div class="play-banner player-color-banner"></div>
+    <h2 class="play-h2">GAME OVER</h2>
+    <p class="play-subtle">Check the big screen for the winner!</p>
+  </section>
+
+  <!-- DISCONNECTED -->
+  <section id="screen-disconnected" class="screen">
+    <h1 class="big-headline">DISCONNECTED</h1>
+    <p class="big-sub">The room closed or you lost connection.</p>
+    <div class="screen-cta">
+      <button id="disconnected-back" class="btn btn-primary">BACK TO MENU</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="js/theme.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

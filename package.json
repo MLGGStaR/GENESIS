@@ -1,0 +1,14 @@
+{
+  "name": "genesis",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "GENESIS — couch party games. Host on the big screen, players join from their phones.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
