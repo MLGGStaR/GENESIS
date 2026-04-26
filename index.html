@@ -318,9 +318,13 @@
       <span class="round-banner-label">ROUND</span>
       <span class="round-banner-num" id="fk-wheel-round">1</span>
       <span class="round-banner-of">/ <span id="fk-wheel-total">5</span></span>
+      <span class="round-banner-sep">·</span>
+      <span class="round-banner-label">Q</span>
+      <span class="round-banner-num" data-fk-sub-q>1</span>
+      <span class="round-banner-of">/ <span data-fk-sub-q-total>3</span></span>
     </div>
     <h1 class="big-headline">SPIN THE WHEEL</h1>
-    <p class="big-sub">Picking this round's challenge...</p>
+    <p class="big-sub">Picking this question's challenge...</p>
     <div class="fk-wheel-wrap">
       <div class="fk-wheel-pointer">▼</div>
       <svg class="fk-wheel" viewBox="-110 -110 220 220" aria-hidden="true">
@@ -336,6 +340,10 @@
       <span class="round-banner-label">ROUND</span>
       <span class="round-banner-num" id="fk-read-round">1</span>
       <span class="round-banner-of">/ <span id="fk-read-total">5</span></span>
+      <span class="round-banner-sep">·</span>
+      <span class="round-banner-label">Q</span>
+      <span class="round-banner-num" data-fk-sub-q>1</span>
+      <span class="round-banner-of">/ <span data-fk-sub-q-total>3</span></span>
     </div>
     <div class="fk-type-pill" id="fk-read-type-pill">POINTING</div>
     <h1 class="big-headline">CHECK YOUR PHONES</h1>
@@ -350,6 +358,10 @@
       <span class="round-banner-label">ROUND</span>
       <span class="round-banner-num" id="fk-act-round">1</span>
       <span class="round-banner-of">/ <span id="fk-act-total">5</span></span>
+      <span class="round-banner-sep">·</span>
+      <span class="round-banner-label">Q</span>
+      <span class="round-banner-num" data-fk-sub-q>1</span>
+      <span class="round-banner-of">/ <span data-fk-sub-q-total>3</span></span>
     </div>
     <div class="fk-type-pill" id="fk-act-type-pill">POINTING</div>
     <h1 class="big-headline" id="fk-act-headline">DO IT NOW!</h1>
@@ -357,19 +369,24 @@
     <div class="fk-timer-display fk-timer-act" id="fk-act-timer">5</div>
   </section>
 
-  <!-- HOST FK: voting (question revealed, voters pick faker) -->
+  <!-- HOST FK: voting (only after all 3 sub-questions are done) -->
   <section id="host-fk-voting" class="screen">
-    <p class="reveal-q-label">THE PROMPT WAS:</p>
+    <p class="reveal-q-label">LAST PROMPT:</p>
     <h2 class="reveal-q-text" id="fk-voting-question">...</h2>
     <h1 class="big-headline">WHO'S FAKING IT?</h1>
-    <p class="big-sub">Vote on your phones</p>
+    <p class="big-sub">After 3 rounds of clues — vote on your phones</p>
     <p class="progress-counter"><span id="fk-vote-count">0</span> / <span id="fk-vote-total">0</span> voted</p>
   </section>
 
-  <!-- HOST FK: round results -->
+  <!-- HOST FK: round results — dramatic FAKER reveal -->
   <section id="host-fk-round-results" class="screen">
-    <p class="round-banner-label">THE FAKER WAS</p>
-    <h1 class="big-headline imposter-name" id="fk-results-faker-name">...</h1>
+    <div class="fk-faker-reveal">
+      <h1 class="fk-faker-headline">FAKER</h1>
+      <div class="fk-faker-name-block">
+        <span class="fk-faker-name-dot"></span>
+        <span class="fk-faker-name" id="fk-results-faker-name">PLAYER</span>
+      </div>
+    </div>
     <div class="results-status" id="fk-results-status">...</div>
     <div class="results-leaderboard" id="fk-results-leaderboard"></div>
     <div class="screen-cta">

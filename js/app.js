@@ -605,6 +605,7 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
 // ============================================================
 
 const FK_TOTAL_ROUNDS = 5;
+const FK_QUESTIONS_PER_ROUND = 3;
 const FK_POINTS_CORRECT_GUESS = 1000;
 const FK_POINTS_FAKER_SURVIVES = 1500;
 const FK_POINTS_FAKER_PARTIAL = 250;
@@ -615,13 +616,14 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     phase: 'LOBBY',
     round: 0,
     totalRounds: FK_TOTAL_ROUNDS,
+    subQuestion: 0,                  // 1..FK_QUESTIONS_PER_ROUND
+    totalSubQuestions: FK_QUESTIONS_PER_ROUND,
     fakerId: null,
-    fakerRotation: [],
-    type: null,           // 'point' | 'fingers' | 'raise'
+    type: null,                      // 'point' | 'fingers' | 'raise'
     question: null,
     typeRotation: [],
     usedQuestions: { point: new Set(), fingers: new Set(), raise: new Set() },
-    votes: new Map(),     // voterId -> targetId
+    votes: new Map(),                // voterId -> targetId
     lastResults: null,
     timerEndsAt: 0,
     timerDurationMs: 0,
@@ -658,7 +660,15 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     const players = getPlayers().map(p => ({
       id: p.id, name: p.name, color: p.color, score: p.score,
     }));
-    const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players, type: state.type };
+    const base = {
+      phase: state.phase,
+      round: state.round,
+      totalRounds: state.totalRounds,
+      subQuestion: state.subQuestion,
+      totalSubQuestions: state.totalSubQuestions,
+      players,
+      type: state.type,
+    };
 
     if (state.phase === 'FK_WHEEL') {
       // Send the picked type so the wheel knows where to land
@@ -705,19 +715,28 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
   }
 
   function startRound() {
+    // A "round" is 3 sub-questions with the SAME faker; the faker is only
+    // revealed at the end of the round, after voting.
     clearTimers();
     state.round++;
     state.votes.clear();
+    state.subQuestion = 0;
+    state.fakerId = pickFaker();
+    startSubQuestion();
+  }
+
+  function startSubQuestion() {
+    clearTimers();
+    state.subQuestion++;
     state.type = pickType();
     state.question = pickQuestion(state.type);
-    state.fakerId = pickFaker();
 
-    // PHASE 1: WHEEL spin (3.5s)
+    // PHASE 1: WHEEL spin (~2.5s)
     state.phase = 'FK_WHEEL';
     emitPublic();
     for (const p of getPlayers()) sendPrivate(p.id, { phase: 'FK_WHEEL', pickedType: state.type });
 
-    scheduleNextPhase(3500, () => {
+    scheduleNextPhase(2500, () => {
       if (state.phase !== 'FK_WHEEL') return;
       enterReadPhase();
     });
@@ -747,7 +766,13 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     }
     scheduleNextPhase(state.timerDurationMs, () => {
       if (state.phase !== 'FK_ACT') return;
-      enterVotingPhase();
+      // After the act, EITHER move on to the next sub-question (same faker)
+      // OR — if all 3 sub-questions are done — go to voting + faker reveal.
+      if (state.subQuestion < FK_QUESTIONS_PER_ROUND) {
+        startSubQuestion();
+      } else {
+        enterVotingPhase();
+      }
     });
   }
 
@@ -1395,22 +1420,24 @@ function renderHostGameOrLobby(state) {
     show('host-fk-wheel');
     $('fk-wheel-round').textContent = state.round;
     $('fk-wheel-total').textContent = state.totalRounds;
+    updateFkSubQuestion(state.subQuestion, state.totalSubQuestions);
     spinFkTypeWheel(state.pickedType || state.type);
     stopHostCountdown();
   } else if (state.phase === 'FK_READ') {
     show('host-fk-read');
     $('fk-read-round').textContent = state.round;
     $('fk-read-total').textContent = state.totalRounds;
+    updateFkSubQuestion(state.subQuestion, state.totalSubQuestions);
     const pill = $('fk-read-type-pill');
     pill.classList.remove('type-point', 'type-fingers', 'type-raise');
     pill.classList.add('type-' + state.type);
     pill.textContent = fkTypeLabel(state.type);
-    // Countdown matches the timerEndsAt the host scheduled
     startHostCountdown(state.timerEndsAt, 'fk-read-timer');
   } else if (state.phase === 'FK_ACT') {
     show('host-fk-act');
     $('fk-act-round').textContent = state.round;
     $('fk-act-total').textContent = state.totalRounds;
+    updateFkSubQuestion(state.subQuestion, state.totalSubQuestions);
     const pill = $('fk-act-type-pill');
     pill.classList.remove('type-point', 'type-fingers', 'type-raise');
     pill.classList.add('type-' + state.type);
@@ -1429,14 +1456,17 @@ function renderHostGameOrLobby(state) {
     stopHostCountdown();
     show('host-fk-round-results');
     $('fk-results-faker-name').textContent = (state.fakerName || '?').toUpperCase();
+    // Color the dot next to the name
+    const dot = document.querySelector('#host-fk-round-results .fk-faker-name-dot');
+    if (dot) dot.style.background = state.fakerColor || '#888';
     const status = $('fk-results-status');
     status.classList.remove('caught', 'escaped');
     if (state.lastResults?.fakerCaught) {
       status.classList.add('caught');
-      status.textContent = `🎯 FAKER CAUGHT — ${state.lastResults.correctGuessers.length} player(s) saw through it`;
+      status.textContent = `🎯 CAUGHT — ${state.lastResults.correctGuessers.length} player(s) saw through it`;
     } else {
       status.classList.add('escaped');
-      status.textContent = `🤥 FAKER ESCAPED — +${state.lastResults.fakerPoints} points`;
+      status.textContent = `🤥 GOT AWAY — +${state.lastResults.fakerPoints} points`;
     }
     renderLeaderboard($('fk-results-leaderboard'), state.players);
   } else if (state.phase === 'FINAL_RESULTS') {
@@ -1636,6 +1666,12 @@ function renderFkVoteButtons(candidates) {
     });
     el.appendChild(btn);
   }
+}
+
+// Update every "Q X / Y" pill on host FK screens (data-fk-sub-q + data-fk-sub-q-total).
+function updateFkSubQuestion(sub, total) {
+  document.querySelectorAll('[data-fk-sub-q]').forEach(el => { el.textContent = sub || 1; });
+  document.querySelectorAll('[data-fk-sub-q-total]').forEach(el => { el.textContent = total || 3; });
 }
 
 function fkTypeLabel(type) {
