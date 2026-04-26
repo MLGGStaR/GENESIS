@@ -312,7 +312,8 @@
        FAKIN' IT HOST SCREENS
        ============================================================ -->
 
-  <!-- HOST FK: round splash + answering wait -->
+  <!-- HOST FK: answering wait — question is NOT shown here so the faker
+       can't peek at the TV. Only the round type + progress. -->
   <section id="host-fk-answering" class="screen">
     <div class="round-banner">
       <span class="round-banner-label">ROUND</span>
@@ -320,8 +321,7 @@
       <span class="round-banner-of">/ <span id="fk-total-rounds">5</span></span>
     </div>
     <div class="fk-type-pill" id="fk-type-pill">POINTING</div>
-    <p class="reveal-q-label">EVERYONE'S DOING:</p>
-    <h1 class="reveal-q-text" id="fk-host-question">...</h1>
+    <h1 class="big-headline">CHECK YOUR PHONES</h1>
     <p class="big-sub">One of you is faking it 🤥</p>
     <div class="progress-circles" id="fk-answering-progress"></div>
     <p class="progress-counter"><span id="fk-answer-count">0</span> / <span id="fk-answer-total">0</span> done</p>

@@ -659,7 +659,8 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players, type: state.type };
 
     if (state.phase === 'FK_ANSWERING') {
-      base.question = state.question;
+      // NOTE: question is intentionally NOT in the public state during
+      // answering — host TV would let the faker peek otherwise.
       base.submittedCount = state.answers.size;
       base.totalCount = players.length;
       base.submittedIds = [...state.answers.keys()];
@@ -727,8 +728,9 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
       const isFaker = p.id === state.fakerId;
       sendPrivate(p.id, {
         phase: 'FK_ANSWERING',
-        type: state.type,
-        // Faker only sees the type, not the actual question
+        // Use `roundType` not `type` — `type` would collide with the envelope
+        // {type:'private',...} spread and silently break the message.
+        roundType: state.type,
         question: isFaker ? null : state.question,
         isFaker,
         candidates: state.type === 'point'
@@ -833,7 +835,7 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
         cleaned = answer;
       } else return;
       state.answers.set(playerId, cleaned);
-      sendPrivate(playerId, { phase: 'FK_WAITING', answer: cleaned, type: state.type });
+      sendPrivate(playerId, { phase: 'FK_WAITING', answer: cleaned, roundType: state.type });
       emitPublic();
       if (state.answers.size >= players.length) {
         state.phase = 'FK_REVEAL';
@@ -1261,7 +1263,7 @@ function handlePrivateMessage(msg) {
     applyPlayerColor();
     show('player-fk-answering');
   } else if (msg.phase === 'FK_WAITING') {
-    $('fk-my-answer-display').textContent = formatFkAnswerForDisplay(msg.type, msg.answer);
+    $('fk-my-answer-display').textContent = formatFkAnswerForDisplay(msg.roundType, msg.answer);
     applyPlayerColor();
     show('player-fk-waiting');
   } else if (msg.phase === 'FK_VOTING') {
@@ -1394,7 +1396,8 @@ function renderHostGameOrLobby(state) {
     pill.textContent = state.type === 'point' ? 'POINTING'
                      : state.type === 'fingers' ? 'HOLD UP FINGERS'
                      : 'RAISE YOUR HAND';
-    $('fk-host-question').textContent = state.question || '';
+    // Question text is intentionally NOT shown on the host TV during answering
+    // (would let the faker peek). It's revealed in the next phase.
     $('fk-answer-count').textContent = state.submittedCount || 0;
     $('fk-answer-total').textContent = state.totalCount || state.players.length;
     renderProgressCircles(state.players, state.submittedIds || [], 'fk-answering-progress');
@@ -1568,9 +1571,9 @@ function renderFkPlayerAnswering(msg) {
   $('fk-faker-pill').hidden = !isFaker;
   if (isFaker) {
     $('fk-player-prompt-label').textContent = 'YOU\'RE THE FAKER';
-    if (msg.type === 'point') {
+    if (msg.roundType === 'point') {
       $('fk-player-question').textContent = 'Everyone is pointing at someone. Pick a player to point at.';
-    } else if (msg.type === 'fingers') {
+    } else if (msg.roundType === 'fingers') {
       $('fk-player-question').textContent = 'Everyone is holding up 1-5 fingers. Pick a number.';
     } else {
       $('fk-player-question').textContent = 'Everyone\'s deciding to raise their hand or not. Pick one.';
@@ -1584,7 +1587,7 @@ function renderFkPlayerAnswering(msg) {
 
   const area = $('fk-answer-area');
   area.innerHTML = '';
-  if (msg.type === 'point') {
+  if (msg.roundType === 'point') {
     const grid = document.createElement('div');
     grid.className = 'fk-point-grid';
     for (const c of (msg.candidates || [])) {
@@ -1595,7 +1598,7 @@ function renderFkPlayerAnswering(msg) {
       grid.appendChild(btn);
     }
     area.appendChild(grid);
-  } else if (msg.type === 'fingers') {
+  } else if (msg.roundType === 'fingers') {
     const grid = document.createElement('div');
     grid.className = 'fk-fingers-grid';
     for (let i = 1; i <= 5; i++) {
