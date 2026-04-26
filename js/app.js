@@ -6,6 +6,7 @@
 
 import { QUESTION_PAIRS } from './questions.js';
 import { POLL_QUESTIONS } from './guesspionage-questions.js';
+import { POINT_QUESTIONS, FINGERS_QUESTIONS, RAISE_QUESTIONS } from './fakinit-questions.js';
 
 const PEER_PREFIX = 'genesis-impv1-';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
@@ -69,6 +70,11 @@ const ALL_SCREENS = [
   // Guesspionage — player
   'player-gpn-polled', 'player-gpn-spectate',
   'player-gpn-voting', 'player-gpn-voted', 'player-gpn-polled-waiting',
+  // Fakin' It — host
+  'host-fk-answering', 'host-fk-reveal', 'host-fk-voting', 'host-fk-round-results',
+  // Fakin' It — player
+  'player-fk-answering', 'player-fk-waiting',
+  'player-fk-voting', 'player-fk-voted', 'player-fk-round-results',
 ];
 
 function show(id) {
@@ -593,6 +599,282 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
 }
 
 // ============================================================
+// Fakin' It game (host-only). Each round one player is the secret faker;
+// they only learn the round TYPE (point / fingers / raise) and have to
+// bluff a believable answer. Everyone else gets the actual prompt.
+// ============================================================
+
+const FK_TOTAL_ROUNDS = 5;
+const FK_POINTS_CORRECT_GUESS = 1000;
+const FK_POINTS_FAKER_SURVIVES = 1500;
+const FK_POINTS_FAKER_PARTIAL = 250;
+const FK_TYPES = ['point', 'fingers', 'raise'];
+
+function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
+  const state = {
+    phase: 'LOBBY',
+    round: 0,
+    totalRounds: FK_TOTAL_ROUNDS,
+    fakerId: null,
+    fakerRotation: [],
+    type: null,           // 'point' | 'fingers' | 'raise'
+    question: null,
+    typeRotation: [],
+    usedQuestions: { point: new Set(), fingers: new Set(), raise: new Set() },
+    answers: new Map(),   // playerId -> answer (string for fingers/raise, peerId for point)
+    votes: new Map(),     // voterId -> targetId
+    lastResults: null,
+  };
+
+  function pickType() {
+    if (state.typeRotation.length === 0) {
+      state.typeRotation = [...FK_TYPES].sort(() => Math.random() - 0.5);
+    }
+    return state.typeRotation.shift();
+  }
+
+  function pickQuestion(type) {
+    const pool = type === 'point' ? POINT_QUESTIONS
+               : type === 'fingers' ? FINGERS_QUESTIONS
+               : RAISE_QUESTIONS;
+    const used = state.usedQuestions[type];
+    if (used.size >= pool.length) used.clear();
+    let idx;
+    do { idx = Math.floor(Math.random() * pool.length); } while (used.has(idx));
+    used.add(idx);
+    return pool[idx];
+  }
+
+  function pickFaker() {
+    const ids = getPlayers().map(p => p.id);
+    if (ids.length === 0) return null;
+    state.fakerRotation = state.fakerRotation.filter(id => ids.includes(id));
+    if (state.fakerRotation.length === 0) {
+      state.fakerRotation = [...ids].sort(() => Math.random() - 0.5);
+    }
+    return state.fakerRotation.shift();
+  }
+
+  function publicState() {
+    const players = getPlayers().map(p => ({
+      id: p.id, name: p.name, color: p.color, score: p.score,
+    }));
+    const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players, type: state.type };
+
+    if (state.phase === 'FK_ANSWERING') {
+      base.question = state.question;
+      base.submittedCount = state.answers.size;
+      base.totalCount = players.length;
+      base.submittedIds = [...state.answers.keys()];
+    }
+    if (state.phase === 'FK_REVEAL' || state.phase === 'FK_VOTING') {
+      base.question = state.question;
+      base.answers = serializeAnswers(players);
+    }
+    if (state.phase === 'FK_VOTING') {
+      base.votedCount = state.votes.size;
+      base.totalCount = players.length;
+      base.votedIds = [...state.votes.keys()];
+    }
+    if (state.phase === 'FK_ROUND_RESULTS') {
+      const faker = players.find(p => p.id === state.fakerId);
+      base.fakerId = state.fakerId;
+      base.fakerName = faker?.name || '?';
+      base.fakerColor = faker?.color || '#888';
+      base.question = state.question;
+      base.answers = serializeAnswers(players);
+      base.lastResults = state.lastResults;
+    }
+    if (state.phase === 'FINAL_RESULTS') {
+      base.standings = [...players].sort((a, b) => b.score - a.score);
+    }
+    return base;
+  }
+
+  function serializeAnswers(players) {
+    return [...state.answers.entries()].map(([id, ans]) => {
+      const p = players.find(p => p.id === id);
+      let display = String(ans);
+      if (state.type === 'point') {
+        const target = players.find(p => p.id === ans);
+        display = target?.name || '?';
+      } else if (state.type === 'fingers') {
+        display = String(ans);
+      } else if (state.type === 'raise') {
+        display = ans === 'raise' ? 'raise' : 'no';
+      }
+      return { id, name: p?.name || '?', color: p?.color || '#888', answer: ans, display };
+    });
+  }
+
+  function emitPublic() { broadcastPublic(publicState()); }
+
+  function startRound() {
+    state.round++;
+    state.answers.clear();
+    state.votes.clear();
+    state.type = pickType();
+    state.question = pickQuestion(state.type);
+    state.fakerId = pickFaker();
+    state.phase = 'FK_ANSWERING';
+    emitPublic();
+    sendQuestionsToPlayers();
+  }
+
+  function sendQuestionsToPlayers() {
+    const players = getPlayers();
+    const candidates = state.type === 'point'
+      ? players.map(p => ({ id: p.id, name: p.name, color: p.color }))
+      : null;
+    for (const p of players) {
+      const isFaker = p.id === state.fakerId;
+      sendPrivate(p.id, {
+        phase: 'FK_ANSWERING',
+        type: state.type,
+        // Faker only sees the type, not the actual question
+        question: isFaker ? null : state.question,
+        isFaker,
+        candidates: state.type === 'point'
+          ? candidates.filter(c => c.id !== p.id) // can't point at self
+          : null,
+        round: state.round,
+        totalRounds: state.totalRounds,
+      });
+    }
+  }
+
+  function endRound() {
+    const voteCounts = new Map();
+    for (const target of state.votes.values()) {
+      voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
+    }
+    let topVoted = null, topCount = -1, tied = false;
+    for (const [id, count] of voteCounts) {
+      if (count > topCount) { topCount = count; topVoted = id; tied = false; }
+      else if (count === topCount) { tied = true; }
+    }
+
+    const players = getPlayers();
+    const correctGuessers = [];
+    for (const [voterId, targetId] of state.votes) {
+      if (targetId === state.fakerId) {
+        const p = players.find(p => p.id === voterId);
+        if (p) {
+          p.score += FK_POINTS_CORRECT_GUESS;
+          correctGuessers.push({ id: voterId, name: p.name, color: p.color });
+        }
+      }
+    }
+    const fakerCaught = !tied && topVoted === state.fakerId;
+    const faker = players.find(p => p.id === state.fakerId);
+    let fakerPoints = 0;
+    if (!fakerCaught) fakerPoints = FK_POINTS_FAKER_SURVIVES;
+    else if (correctGuessers.length < players.length - 1) fakerPoints = FK_POINTS_FAKER_PARTIAL;
+    if (faker) faker.score += fakerPoints;
+
+    state.lastResults = {
+      fakerCaught,
+      fakerName: faker?.name || '?',
+      fakerColor: faker?.color || '#888',
+      fakerPoints,
+      correctGuessers,
+    };
+    state.phase = 'FK_ROUND_RESULTS';
+    emitPublic();
+    for (const p of players) sendPrivate(p.id, { phase: 'FK_ROUND_RESULTS' });
+  }
+
+  function advance() {
+    if (state.phase === 'FK_ANSWERING') {
+      state.phase = 'FK_REVEAL';
+      emitPublic();
+    } else if (state.phase === 'FK_REVEAL') {
+      state.phase = 'FK_VOTING';
+      emitPublic();
+      const players = getPlayers();
+      for (const p of players) {
+        const others = players.filter(o => o.id !== p.id).map(o => ({ id: o.id, name: o.name, color: o.color }));
+        sendPrivate(p.id, { phase: 'FK_VOTING', candidates: others });
+      }
+    } else if (state.phase === 'FK_VOTING') {
+      endRound();
+    } else if (state.phase === 'FK_ROUND_RESULTS') {
+      if (state.round >= state.totalRounds) {
+        state.phase = 'FINAL_RESULTS';
+        emitPublic();
+        for (const p of getPlayers()) sendPrivate(p.id, { phase: 'FINAL_RESULTS' });
+      } else {
+        startRound();
+      }
+    }
+  }
+
+  return {
+    get phase() { return state.phase; },
+    publicState,
+    start() {
+      if (getPlayers().length < 3) return;
+      startRound();
+    },
+    submitFkAnswer(playerId, answer) {
+      if (state.phase !== 'FK_ANSWERING') return;
+      const players = getPlayers();
+      if (!players.find(p => p.id === playerId)) return;
+      // Validate based on type
+      let cleaned = null;
+      if (state.type === 'point') {
+        if (typeof answer !== 'string') return;
+        if (answer === playerId) return;
+        if (!players.find(p => p.id === answer)) return;
+        cleaned = answer;
+      } else if (state.type === 'fingers') {
+        const n = Number(answer);
+        if (!Number.isInteger(n) || n < 1 || n > 5) return;
+        cleaned = n;
+      } else if (state.type === 'raise') {
+        if (answer !== 'raise' && answer !== 'no') return;
+        cleaned = answer;
+      } else return;
+      state.answers.set(playerId, cleaned);
+      sendPrivate(playerId, { phase: 'FK_WAITING', answer: cleaned, type: state.type });
+      emitPublic();
+      if (state.answers.size >= players.length) {
+        state.phase = 'FK_REVEAL';
+        emitPublic();
+      }
+    },
+    submitVote(voterId, targetId) {
+      if (state.phase !== 'FK_VOTING') return;
+      const players = getPlayers();
+      if (!players.find(p => p.id === voterId)) return;
+      if (!players.find(p => p.id === targetId)) return;
+      if (voterId === targetId) return;
+      state.votes.set(voterId, targetId);
+      sendPrivate(voterId, { phase: 'FK_VOTED', targetId });
+      emitPublic();
+      if (state.votes.size >= players.length) endRound();
+    },
+    advance,
+    handleDisconnect(playerId) {
+      state.answers.delete(playerId);
+      state.votes.delete(playerId);
+      const players = getPlayers();
+      if (state.phase === 'FK_ANSWERING' && players.length > 0 && state.answers.size >= players.length) {
+        state.phase = 'FK_REVEAL';
+        emitPublic();
+      }
+      if (state.phase === 'FK_VOTING' && players.length > 0 && state.votes.size >= players.length) {
+        endRound();
+      }
+      if (playerId === state.fakerId &&
+          (state.phase === 'FK_ANSWERING' || state.phase === 'FK_REVEAL' || state.phase === 'FK_VOTING')) {
+        endRound();
+      }
+    },
+  };
+}
+
+// ============================================================
 // HOST: room management + message dispatch
 // ============================================================
 
@@ -725,6 +1007,11 @@ function handleGuestMessage(conn, data) {
     if (app.game?.submitPollLive) app.game.submitPollLive(conn.peer, data.value);
     return;
   }
+
+  if (data.type === 'fkAnswer') {
+    if (app.game?.submitFkAnswer) app.game.submitFkAnswer(conn.peer, data.value);
+    return;
+  }
 }
 
 // Update the host TV's mirror fill ring while the polled player drags.
@@ -758,11 +1045,12 @@ function broadcastLobbyState() {
 }
 
 function updateHostLobbyStatus() {
-  const enough = hostPlayers.length >= 2;
+  const needed = app.selectedGame === 'fakinit' ? 3 : 2;
+  const enough = hostPlayers.length >= needed;
   $('host-start-btn').disabled = !enough;
   $('host-lobby-status').textContent = enough
     ? `${hostPlayers.length} players ready — let's go!`
-    : `Need at least 2 players (${hostPlayers.length}/2)`;
+    : `Need at least ${needed} players (${hostPlayers.length}/${needed})`;
 }
 
 function teardownPeer() {
@@ -970,6 +1258,29 @@ function handlePrivateMessage(msg) {
     applyPlayerColor();
     show('player-round-results');
   }
+  // ----- Fakin' It -----
+  else if (msg.phase === 'FK_ANSWERING') {
+    renderFkPlayerAnswering(msg);
+    applyPlayerColor();
+    show('player-fk-answering');
+  } else if (msg.phase === 'FK_WAITING') {
+    $('fk-my-answer-display').textContent = formatFkAnswerForDisplay(msg.type, msg.answer);
+    applyPlayerColor();
+    show('player-fk-waiting');
+  } else if (msg.phase === 'FK_VOTING') {
+    app.voteCandidates = msg.candidates || [];
+    renderFkVoteButtons(app.voteCandidates);
+    applyPlayerColor();
+    show('player-fk-voting');
+  } else if (msg.phase === 'FK_VOTED') {
+    const c = app.voteCandidates.find(c => c.id === msg.targetId);
+    $('fk-voted-target').textContent = c ? c.name : '?';
+    applyPlayerColor();
+    show('player-fk-voted');
+  } else if (msg.phase === 'FK_ROUND_RESULTS') {
+    applyPlayerColor();
+    show('player-fk-round-results');
+  }
 }
 
 // ============================================================
@@ -1074,6 +1385,45 @@ function renderHostGameOrLobby(state) {
     // Animate actual % counting up from 0
     animateCountUp($('gpn-results-actual'), 0, state.actual ?? 0, 1400, '%');
     renderLeaderboard($('gpn-results-leaderboard'), state.players);
+  }
+  // ----- Fakin' It -----
+  else if (state.phase === 'FK_ANSWERING') {
+    show('host-fk-answering');
+    $('fk-round').textContent = state.round;
+    $('fk-total-rounds').textContent = state.totalRounds;
+    const pill = $('fk-type-pill');
+    pill.classList.remove('type-point', 'type-fingers', 'type-raise');
+    pill.classList.add('type-' + state.type);
+    pill.textContent = state.type === 'point' ? 'POINTING'
+                     : state.type === 'fingers' ? 'HOLD UP FINGERS'
+                     : 'RAISE YOUR HAND';
+    $('fk-host-question').textContent = state.question || '';
+    $('fk-answer-count').textContent = state.submittedCount || 0;
+    $('fk-answer-total').textContent = state.totalCount || state.players.length;
+    renderProgressCircles(state.players, state.submittedIds || [], 'fk-answering-progress');
+  } else if (state.phase === 'FK_REVEAL') {
+    show('host-fk-reveal');
+    $('fk-reveal-question').textContent = state.question || '';
+    renderFkRevealGrid($('fk-reveal-grid'), state.answers || [], state.type, state.players);
+  } else if (state.phase === 'FK_VOTING') {
+    show('host-fk-voting');
+    $('fk-voting-question').textContent = state.question || '';
+    renderFkRevealGrid($('fk-voting-grid'), state.answers || [], state.type, state.players);
+    $('fk-vote-count').textContent = state.votedCount || 0;
+    $('fk-vote-total').textContent = state.totalCount || state.players.length;
+  } else if (state.phase === 'FK_ROUND_RESULTS') {
+    show('host-fk-round-results');
+    $('fk-results-faker-name').textContent = (state.fakerName || '?').toUpperCase();
+    const status = $('fk-results-status');
+    status.classList.remove('caught', 'escaped');
+    if (state.lastResults?.fakerCaught) {
+      status.classList.add('caught');
+      status.textContent = `🎯 FAKER CAUGHT — ${state.lastResults.correctGuessers.length} player(s) saw through it`;
+    } else {
+      status.classList.add('escaped');
+      status.textContent = `🤥 FAKER ESCAPED — +${state.lastResults.fakerPoints} points`;
+    }
+    renderLeaderboard($('fk-results-leaderboard'), state.players);
   } else if (state.phase === 'FINAL_RESULTS') {
     show('host-final');
     renderFinal(state.standings);
@@ -1097,8 +1447,9 @@ function renderPlayerPublicGameState(gs) {
   }
 }
 
-function renderProgressCircles(players, submittedIds) {
-  const el = $('answering-progress');
+function renderProgressCircles(players, submittedIds, targetId) {
+  const el = $(targetId || 'answering-progress');
+  if (!el) return;
   el.innerHTML = '';
   const submitted = new Set(submittedIds);
   for (const p of players) {
@@ -1208,6 +1559,133 @@ function renderVoteButtons(candidates) {
       }
     });
     el.appendChild(btn);
+  }
+}
+
+// ============================================================
+// Fakin' It UI helpers
+// ============================================================
+
+function renderFkPlayerAnswering(msg) {
+  const isFaker = !!msg.isFaker;
+  $('fk-faker-pill').hidden = !isFaker;
+  if (isFaker) {
+    $('fk-player-prompt-label').textContent = 'YOU\'RE THE FAKER';
+    if (msg.type === 'point') {
+      $('fk-player-question').textContent = 'Everyone is pointing at someone. Pick a player to point at.';
+    } else if (msg.type === 'fingers') {
+      $('fk-player-question').textContent = 'Everyone is holding up 1-5 fingers. Pick a number.';
+    } else {
+      $('fk-player-question').textContent = 'Everyone\'s deciding to raise their hand or not. Pick one.';
+    }
+    $('fk-player-tip').textContent = 'Bluff! Pick something that won\'t make you stand out.';
+  } else {
+    $('fk-player-prompt-label').textContent = 'YOUR PROMPT';
+    $('fk-player-question').textContent = msg.question || '';
+    $('fk-player-tip').textContent = 'Answer honestly — but try not to look like the faker either!';
+  }
+
+  const area = $('fk-answer-area');
+  area.innerHTML = '';
+  if (msg.type === 'point') {
+    const grid = document.createElement('div');
+    grid.className = 'fk-point-grid';
+    for (const c of (msg.candidates || [])) {
+      const btn = document.createElement('button');
+      btn.className = 'vote-btn';
+      btn.innerHTML = `<span class="vote-btn-dot" style="background:${c.color}"></span><span>${escape(c.name)}</span>`;
+      btn.addEventListener('click', () => sendFkAnswer(c.id));
+      grid.appendChild(btn);
+    }
+    area.appendChild(grid);
+  } else if (msg.type === 'fingers') {
+    const grid = document.createElement('div');
+    grid.className = 'fk-fingers-grid';
+    for (let i = 1; i <= 5; i++) {
+      const btn = document.createElement('button');
+      btn.className = 'fk-fingers-btn';
+      btn.textContent = String(i);
+      btn.addEventListener('click', () => sendFkAnswer(i));
+      grid.appendChild(btn);
+    }
+    area.appendChild(grid);
+  } else {
+    const grid = document.createElement('div');
+    grid.className = 'fk-raise-grid';
+    const yes = document.createElement('button');
+    yes.className = 'fk-raise-btn fk-raise-yes';
+    yes.innerHTML = `<span class="fk-raise-btn-icon">🙋</span><span>RAISE HAND</span>`;
+    yes.addEventListener('click', () => sendFkAnswer('raise'));
+    const no = document.createElement('button');
+    no.className = 'fk-raise-btn fk-raise-no';
+    no.innerHTML = `<span class="fk-raise-btn-icon">🙅</span><span>DON'T</span>`;
+    no.addEventListener('click', () => sendFkAnswer('no'));
+    grid.appendChild(yes);
+    grid.appendChild(no);
+    area.appendChild(grid);
+  }
+}
+
+function sendFkAnswer(value) {
+  if (app.hostConn && app.hostConn.open) {
+    app.hostConn.send({ type: 'fkAnswer', value });
+  }
+}
+
+function renderFkVoteButtons(candidates) {
+  const el = $('fk-vote-grid');
+  el.innerHTML = '';
+  for (const c of candidates) {
+    const btn = document.createElement('button');
+    btn.className = 'vote-btn';
+    btn.innerHTML = `<span class="vote-btn-dot" style="background:${c.color}"></span><span>${escape(c.name)}</span>`;
+    btn.addEventListener('click', () => {
+      if (app.hostConn && app.hostConn.open) {
+        app.hostConn.send({ type: 'vote', targetId: c.id });
+      }
+    });
+    el.appendChild(btn);
+  }
+}
+
+function formatFkAnswerForDisplay(type, raw) {
+  if (type === 'fingers') return String(raw);
+  if (type === 'raise') return raw === 'raise' ? '🙋 RAISED' : '🙅 NOT RAISED';
+  if (type === 'point') {
+    // raw is a peerId; show "→ <name>" by looking up in voteCandidates if available
+    return '→ pointed';
+  }
+  return String(raw);
+}
+
+function renderFkRevealGrid(el, answers, type, players) {
+  el.innerHTML = '';
+  let i = 0;
+  for (const a of answers) {
+    const card = document.createElement('div');
+    card.className = 'fk-reveal-card';
+    card.style.animationDelay = `${i * 80}ms`;
+
+    let answerHtml;
+    if (type === 'point') {
+      const target = players.find(p => p.id === a.answer);
+      const name = target?.name || '?';
+      const color = target?.color || '#888';
+      answerHtml = `<div class="fk-reveal-answer"><span class="fk-reveal-arrow">→</span><span class="fk-reveal-dot" style="background:${color};display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;margin-right:6px"></span>${escape(name)}</div>`;
+    } else if (type === 'fingers') {
+      answerHtml = `<div class="fk-reveal-answer fk-answer-fingers">${escape(a.display)}</div>`;
+    } else {
+      answerHtml = `<div class="fk-reveal-answer fk-answer-raise">${a.answer === 'raise' ? '🙋 RAISED' : '🙅 NOT RAISED'}</div>`;
+    }
+    card.innerHTML = `
+      <div class="fk-reveal-card-head">
+        <span class="fk-reveal-dot" style="background:${a.color}"></span>
+        <span class="fk-reveal-name">${escape(a.name)}</span>
+      </div>
+      ${answerHtml}
+    `;
+    el.appendChild(card);
+    i++;
   }
 }
 
@@ -1329,9 +1807,13 @@ $('host-back').addEventListener('click', () => {
   }
 });
 $('host-start-btn').addEventListener('click', () => {
-  if (hostPlayers.length < 2) return;
+  // Fakin' It needs at least 3 players (faker + 2 voters); other games allow 2
+  const needed = app.selectedGame === 'fakinit' ? 3 : 2;
+  if (hostPlayers.length < needed) return;
   if (app.selectedGame === 'guesspionage') {
     app.game = createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate });
+  } else if (app.selectedGame === 'fakinit') {
+    app.game = createFakinItGame({ getPlayers, broadcastPublic, sendPrivate });
   } else {
     app.game = createImposterGame({ getPlayers, broadcastPublic, sendPrivate });
   }
@@ -1341,6 +1823,8 @@ $('reveal-answers-next').addEventListener('click', () => app.game?.advance());
 $('reveal-question-next').addEventListener('click', () => app.game?.advance());
 $('results-next').addEventListener('click', () => app.game?.advance());
 $('gpn-results-next').addEventListener('click', () => app.game?.advance());
+$('fk-reveal-next').addEventListener('click', () => app.game?.advance());
+$('fk-results-next').addEventListener('click', () => app.game?.advance());
 $('final-back').addEventListener('click', () => resetToLobby());
 
 // Player answer submit (Imposter)
@@ -1532,5 +2016,8 @@ if (qsGame === 'imposter') {
   if (qsCode) $('entry-code').value = qsCode.toUpperCase().slice(0, 4);
 } else if (qsGame === 'guesspionage') {
   openEntry(qsGame, 'GUESSPIONAGE', '2-12 players · higher or lower?');
+  if (qsCode) $('entry-code').value = qsCode.toUpperCase().slice(0, 4);
+} else if (qsGame === 'fakinit') {
+  openEntry(qsGame, "FAKIN' IT", '3-12 players · spot the faker');
   if (qsCode) $('entry-code').value = qsCode.toUpperCase().slice(0, 4);
 }
