@@ -1738,7 +1738,7 @@ h1, h2, h3 { margin: 0; }
   stroke-width: 22;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.08s linear;
-  filter: drop-shadow(0 0 8px rgba(255, 46, 147, 0.45));
+  opacity: 0.85;
   pointer-events: none;
 }
 .gpn-fill-bg { pointer-events: none; }
@@ -1747,18 +1747,15 @@ h1, h2, h3 { margin: 0; }
   fill: #fff;
   stroke: var(--accent);
   stroke-width: 5;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.3));
   transition: cx 0.08s linear, cy 0.08s linear, r 0.15s ease;
   pointer-events: none;
-}
-.gpn-fill-interactive .gpn-fill-thumb {
-  filter: drop-shadow(0 0 14px var(--accent)) drop-shadow(0 2px 6px rgba(0,0,0,0.3));
 }
 .gpn-fill-interactive.dragging .gpn-fill-thumb {
   fill: var(--accent);
   stroke: #fff;
   stroke-width: 6;
-  filter: drop-shadow(0 0 24px var(--accent));
+  filter: drop-shadow(0 0 14px var(--accent));
 }
 
 .gpn-fill-interactive,
@@ -1768,15 +1765,12 @@ h1, h2, h3 { margin: 0; }
 .gpn-fill-interactive { cursor: grab; }
 .gpn-fill-interactive:active { cursor: grabbing; }
 .gpn-fill-interactive .gpn-fill-fg {
-  animation: ringIdleGlow 2.5s ease-in-out infinite;
-}
-@keyframes ringIdleGlow {
-  0%, 100% { filter: drop-shadow(0 0 6px rgba(255, 46, 147, 0.45)); }
-  50%      { filter: drop-shadow(0 0 18px rgba(255, 46, 147, 0.7)); }
+  /* No idle glow — keeps the wheel calm until the user is actively dragging. */
 }
 .gpn-fill-interactive.dragging .gpn-fill-fg {
-  filter: drop-shadow(0 0 22px var(--accent-3)) drop-shadow(0 0 30px var(--accent));
-  animation: none;
+  opacity: 1;
+  filter: drop-shadow(0 0 8px var(--accent));
+  transition: filter 0.15s ease, opacity 0.15s ease;
 }
 
 .gpn-fill-display {
@@ -1828,4 +1822,45 @@ h1, h2, h3 { margin: 0; }
     transform: translate(calc(var(--sx) + var(--dx)), calc(var(--sy) + var(--dy))) rotate(var(--dr));
     opacity: 0;
   }
+}
+
+/* Small number labels inside the fill ring (0/25/50/75 reference marks) */
+.gpn-fill-labels text {
+  font-family: 'Bungee', sans-serif;
+  font-size: 11px;
+  fill: var(--text-faint);
+  letter-spacing: 1px;
+  opacity: 0.7;
+}
+
+/* MUCH HIGHER / MUCH LOWER buttons (rounds 3+) */
+.gpn-vote-sub {
+  font-family: 'Fredoka', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-transform: none;
+  margin-top: 2px;
+}
+.gpn-vote-much {
+  border-color: var(--accent-2);
+}
+.gpn-vote-much .gpn-vote-arrow {
+  color: var(--accent-2);
+}
+.gpn-vote-much-higher:hover, .gpn-vote-much-higher:active {
+  border-color: #16a34a;
+  background: linear-gradient(180deg, rgba(22, 163, 74, 0.18), var(--surface));
+}
+.gpn-vote-much-higher .gpn-vote-arrow { color: #16a34a; }
+.gpn-vote-much-lower:hover, .gpn-vote-much-lower:active {
+  border-color: #ea580c;
+  background: linear-gradient(180deg, rgba(234, 88, 12, 0.18), var(--surface));
+}
+.gpn-vote-much-lower .gpn-vote-arrow { color: #ea580c; }
+
+/* Stack the 4 buttons vertically when "much" options are visible */
+.gpn-vote-buttons.has-much {
+  grid-template-columns: 1fr;
 }

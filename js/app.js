@@ -434,20 +434,37 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     const guess = state.polledGuess;
     const distance = Math.abs(actual - guess);
 
+    // Polled scoring: exact = 2000, within 10 = 1000, within 20 = 500, else 0
     let polledPoints = 0;
-    if (distance <= 5)       polledPoints = 1500;
-    else if (distance <= 15) polledPoints = 1000;
-    else if (distance <= 30) polledPoints = 500;
+    if (distance === 0)      polledPoints = 2000;
+    else if (distance <= 10) polledPoints = 1000;
+    else if (distance <= 20) polledPoints = 500;
     else                     polledPoints = 0;
 
-    const correctDir = actual > guess ? 'higher' : actual < guess ? 'lower' : null;
+    // Voter scoring: correct direction. "Much" votes (rounds 3+) = 1500, normal = 1000.
+    const useMuchVotes = state.round >= 3;
+    const diff = actual - guess; // + = actual is higher
+    let correctDir;
+    if (useMuchVotes) {
+      if (diff > 20)        correctDir = 'muchHigher';
+      else if (diff > 0)    correctDir = 'higher';
+      else if (diff === 0)  correctDir = null;
+      else if (diff >= -20) correctDir = 'lower';
+      else                  correctDir = 'muchLower';
+    } else {
+      if (diff > 0)         correctDir = 'higher';
+      else if (diff === 0)  correctDir = null;
+      else                  correctDir = 'lower';
+    }
+
     const players = getPlayers();
     const voterResults = [];
     for (const [voterId, direction] of state.votes) {
       const p = players.find(p => p.id === voterId);
       if (!p) continue;
       const correct = correctDir !== null && direction === correctDir;
-      const points = correct ? 1000 : 0;
+      const isMuch = direction === 'muchHigher' || direction === 'muchLower';
+      const points = correct ? (isMuch ? 1500 : 1000) : 0;
       p.score += points;
       voterResults.push({ id: voterId, name: p.name, color: p.color, direction, correct, points });
     }
@@ -492,6 +509,7 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
     emitPublic();
     sendPrivate(state.polledId, { phase: 'GPN_POLLED_WAITING', guess: v });
     const polled = getPlayers().find(p => p.id === state.polledId);
+    const useMuchVotes = state.round >= 3;
     for (const p of getPlayers()) {
       if (p.id === state.polledId) continue;
       sendPrivate(p.id, {
@@ -499,10 +517,9 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
         question: state.question.q,
         polledName: polled?.name || '?',
         polledGuess: v,
+        useMuchVotes,
       });
     }
-    // 2-player edge case: nobody is voting, end round immediately… actually
-    // 2 players means 1 voter, normal flow works.
     const expectedVoters = getPlayers().length - 1;
     if (expectedVoters === 0) endRound();
   }
@@ -510,7 +527,10 @@ function createGuesspionageGame({ getPlayers, broadcastPublic, sendPrivate }) {
   function submitPollVote(voterId, direction) {
     if (state.phase !== 'GPN_VOTING') return;
     if (voterId === state.polledId) return;
-    if (direction !== 'higher' && direction !== 'lower') return;
+    const validDirs = state.round >= 3
+      ? ['higher', 'lower', 'muchHigher', 'muchLower']
+      : ['higher', 'lower'];
+    if (!validDirs.includes(direction)) return;
     const players = getPlayers();
     if (!players.find(p => p.id === voterId)) return;
     state.votes.set(voterId, direction);
@@ -927,10 +947,19 @@ function handlePrivateMessage(msg) {
     $('gpn-voting-question').textContent = msg.question;
     $('gpn-voting-name').textContent = msg.polledName || '?';
     $('gpn-voting-pct').textContent = (msg.polledGuess ?? 0) + '%';
+    // Round 3+: show MUCH HIGHER / MUCH LOWER buttons
+    const useMuch = !!msg.useMuchVotes;
+    $('gpn-vote-much-higher').hidden = !useMuch;
+    $('gpn-vote-much-lower').hidden = !useMuch;
+    $('gpn-vote-buttons').classList.toggle('has-much', useMuch);
+    // Update sub-labels: "by a little" only makes sense when "much" exists
+    document.querySelectorAll('[data-vote-sub-higher], [data-vote-sub-lower]').forEach(el => {
+      el.style.display = useMuch ? '' : 'none';
+    });
     applyPlayerColor();
     show('player-gpn-voting');
   } else if (msg.phase === 'GPN_VOTED') {
-    $('gpn-voted-direction').textContent = (msg.direction || '?').toUpperCase();
+    $('gpn-voted-direction').textContent = formatVoteDirection(msg.direction);
     applyPlayerColor();
     show('player-gpn-voted');
   } else if (msg.phase === 'GPN_POLLED_WAITING') {
@@ -1025,21 +1054,22 @@ function renderHostGameOrLobby(state) {
     const dir = state.lastResults?.correctDirection;
     const arrow = $('gpn-results-arrow');
     arrow.classList.remove('up', 'down');
-    if (dir === 'higher') { arrow.textContent = '▲'; arrow.classList.add('up'); $('gpn-results-direction').textContent = 'HIGHER'; }
-    else if (dir === 'lower') { arrow.textContent = '▼'; arrow.classList.add('down'); $('gpn-results-direction').textContent = 'LOWER'; }
+    if (dir === 'muchHigher') { arrow.textContent = '▲▲'; arrow.classList.add('up');   $('gpn-results-direction').textContent = 'MUCH HIGHER'; }
+    else if (dir === 'muchLower') { arrow.textContent = '▼▼'; arrow.classList.add('down'); $('gpn-results-direction').textContent = 'MUCH LOWER'; }
+    else if (dir === 'higher') { arrow.textContent = '▲'; arrow.classList.add('up');   $('gpn-results-direction').textContent = 'HIGHER'; }
+    else if (dir === 'lower')  { arrow.textContent = '▼'; arrow.classList.add('down'); $('gpn-results-direction').textContent = 'LOWER'; }
     else { arrow.textContent = '='; $('gpn-results-direction').textContent = 'EXACT MATCH'; }
-    // Bullseye banner if very close
+    // BULLSEYE banner only on an exact guess (0 off)
     const distance = state.lastResults?.distance ?? 999;
     let bullseye = document.getElementById('gpn-bullseye');
     if (bullseye) bullseye.remove();
-    if (distance <= 5) {
+    if (distance === 0) {
       bullseye = document.createElement('div');
       bullseye.id = 'gpn-bullseye';
       bullseye.className = 'gpn-bullseye-banner';
-      bullseye.textContent = '🎯 BULLSEYE!';
+      bullseye.textContent = '🎯 EXACT! +2000';
       $('gpn-results-arrow').parentElement.parentElement.appendChild(bullseye);
-      // Confetti burst when polled player nailed it
-      setTimeout(() => spawnConfetti({ count: 100, spread: 600 }), 800);
+      setTimeout(() => spawnConfetti({ count: 120, spread: 700 }), 800);
     }
     // Animate actual % counting up from 0
     animateCountUp($('gpn-results-actual'), 0, state.actual ?? 0, 1400, '%');
@@ -1468,13 +1498,23 @@ function updateSpectatorLive(value) {
   if (r) setFillValue(r, value);
 }
 
-// Guesspionage: HIGHER / LOWER vote buttons
+// Guesspionage: vote buttons (4 directions, MUCH variants only shown round 3+)
 $('gpn-vote-higher').addEventListener('click', () => sendGpnVote('higher'));
 $('gpn-vote-lower').addEventListener('click', () => sendGpnVote('lower'));
+$('gpn-vote-much-higher').addEventListener('click', () => sendGpnVote('muchHigher'));
+$('gpn-vote-much-lower').addEventListener('click', () => sendGpnVote('muchLower'));
 function sendGpnVote(direction) {
   if (app.hostConn && app.hostConn.open) {
     app.hostConn.send({ type: 'pollVote', direction });
   }
+}
+
+function formatVoteDirection(d) {
+  if (d === 'muchHigher') return 'MUCH HIGHER';
+  if (d === 'muchLower')  return 'MUCH LOWER';
+  if (d === 'higher')     return 'HIGHER';
+  if (d === 'lower')      return 'LOWER';
+  return '?';
 }
 
 // ============================================================

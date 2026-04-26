@@ -138,7 +138,6 @@
     <div class="room-code-panel">
       <div class="join-label">ROOM CODE</div>
       <div class="room-code" id="host-room-code">----</div>
-      <p class="room-code-hint">Friends: open this site, tap IMPOSTER, then JOIN with the code.</p>
     </div>
 
     <h2 class="lobby-section-title">PLAYERS</h2>
@@ -243,6 +242,12 @@
                 transform="rotate(-90 110 110)"
                 data-fill-arc />
         <circle class="gpn-fill-thumb" cx="110" cy="18" r="14" data-fill-thumb />
+        <g class="gpn-fill-labels" pointer-events="none">
+          <text x="110" y="64" text-anchor="middle" dominant-baseline="middle">0</text>
+          <text x="156" y="110" text-anchor="middle" dominant-baseline="middle">25</text>
+          <text x="110" y="156" text-anchor="middle" dominant-baseline="middle">50</text>
+          <text x="64" y="110" text-anchor="middle" dominant-baseline="middle">75</text>
+        </g>
       </svg>
       <div class="gpn-fill-display">
         <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
@@ -386,6 +391,12 @@
                 transform="rotate(-90 110 110)"
                 data-fill-arc />
         <circle class="gpn-fill-thumb" cx="110" cy="18" r="14" data-fill-thumb />
+        <g class="gpn-fill-labels" pointer-events="none">
+          <text x="110" y="64" text-anchor="middle" dominant-baseline="middle">0</text>
+          <text x="156" y="110" text-anchor="middle" dominant-baseline="middle">25</text>
+          <text x="110" y="156" text-anchor="middle" dominant-baseline="middle">50</text>
+          <text x="64" y="110" text-anchor="middle" dominant-baseline="middle">75</text>
+        </g>
       </svg>
       <div class="gpn-fill-display">
         <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
@@ -408,6 +419,12 @@
                 transform="rotate(-90 110 110)"
                 data-fill-arc />
         <circle class="gpn-fill-thumb" cx="110" cy="18" r="14" data-fill-thumb />
+        <g class="gpn-fill-labels" pointer-events="none">
+          <text x="110" y="64" text-anchor="middle" dominant-baseline="middle">0</text>
+          <text x="156" y="110" text-anchor="middle" dominant-baseline="middle">25</text>
+          <text x="110" y="156" text-anchor="middle" dominant-baseline="middle">50</text>
+          <text x="64" y="110" text-anchor="middle" dominant-baseline="middle">75</text>
+        </g>
       </svg>
       <div class="gpn-fill-display">
         <span class="gpn-fill-pct" data-fill-pct>0</span><span class="gpn-fill-suffix">%</span>
@@ -427,14 +444,26 @@
       <span class="gpn-guess-display-pct" id="gpn-voting-pct">--%</span>
     </div>
     <p class="play-subtle">Real answer is probably...</p>
-    <div class="gpn-vote-buttons">
+    <div class="gpn-vote-buttons" id="gpn-vote-buttons">
+      <button class="gpn-vote-btn gpn-vote-much gpn-vote-much-higher" id="gpn-vote-much-higher" hidden>
+        <span class="gpn-vote-arrow">▲▲</span>
+        <span class="gpn-vote-label">MUCH HIGHER</span>
+        <span class="gpn-vote-sub">+20% or more</span>
+      </button>
       <button class="gpn-vote-btn gpn-vote-higher" id="gpn-vote-higher">
         <span class="gpn-vote-arrow">▲</span>
         <span class="gpn-vote-label">HIGHER</span>
+        <span class="gpn-vote-sub" data-vote-sub-higher>by a little</span>
       </button>
       <button class="gpn-vote-btn gpn-vote-lower" id="gpn-vote-lower">
         <span class="gpn-vote-arrow">▼</span>
         <span class="gpn-vote-label">LOWER</span>
+        <span class="gpn-vote-sub" data-vote-sub-lower>by a little</span>
+      </button>
+      <button class="gpn-vote-btn gpn-vote-much gpn-vote-much-lower" id="gpn-vote-much-lower" hidden>
+        <span class="gpn-vote-arrow">▼▼</span>
+        <span class="gpn-vote-label">MUCH LOWER</span>
+        <span class="gpn-vote-sub">-20% or more</span>
       </button>
     </div>
   </section>
