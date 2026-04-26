@@ -71,9 +71,9 @@ const ALL_SCREENS = [
   'player-gpn-polled', 'player-gpn-spectate',
   'player-gpn-voting', 'player-gpn-voted', 'player-gpn-polled-waiting',
   // Fakin' It — host
-  'host-fk-answering', 'host-fk-reveal', 'host-fk-voting', 'host-fk-round-results',
+  'host-fk-wheel', 'host-fk-read', 'host-fk-act', 'host-fk-voting', 'host-fk-round-results',
   // Fakin' It — player
-  'player-fk-answering', 'player-fk-waiting',
+  'player-fk-wheel', 'player-fk-read', 'player-fk-act',
   'player-fk-voting', 'player-fk-voted', 'player-fk-round-results',
 ];
 
@@ -621,9 +621,11 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     question: null,
     typeRotation: [],
     usedQuestions: { point: new Set(), fingers: new Set(), raise: new Set() },
-    answers: new Map(),   // playerId -> answer (string for fingers/raise, peerId for point)
     votes: new Map(),     // voterId -> targetId
     lastResults: null,
+    timerEndsAt: 0,
+    timerDurationMs: 0,
+    phaseTimer: null,
   };
 
   function pickType() {
@@ -658,18 +660,18 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     }));
     const base = { phase: state.phase, round: state.round, totalRounds: state.totalRounds, players, type: state.type };
 
-    if (state.phase === 'FK_ANSWERING') {
-      // NOTE: question is intentionally NOT in the public state during
-      // answering — host TV would let the faker peek otherwise.
-      base.submittedCount = state.answers.size;
-      base.totalCount = players.length;
-      base.submittedIds = [...state.answers.keys()];
+    if (state.phase === 'FK_WHEEL') {
+      // Send the picked type so the wheel knows where to land
+      base.pickedType = state.type;
     }
-    if (state.phase === 'FK_REVEAL' || state.phase === 'FK_VOTING') {
-      base.question = state.question;
-      base.answers = serializeAnswers(players);
+    if (state.phase === 'FK_READ' || state.phase === 'FK_ACT') {
+      // Timer info — host TV starts a countdown matching this end time
+      base.timerEndsAt = state.timerEndsAt;
+      base.timerDurationMs = state.timerDurationMs;
     }
     if (state.phase === 'FK_VOTING') {
+      // Question is now revealed on host TV (everyone has acted, can see prompt)
+      base.question = state.question;
       base.votedCount = state.votes.size;
       base.totalCount = players.length;
       base.votedIds = [...state.votes.keys()];
@@ -680,7 +682,6 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
       base.fakerName = faker?.name || '?';
       base.fakerColor = faker?.color || '#888';
       base.question = state.question;
-      base.answers = serializeAnswers(players);
       base.lastResults = state.lastResults;
     }
     if (state.phase === 'FINAL_RESULTS') {
@@ -689,53 +690,86 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     return base;
   }
 
-  function serializeAnswers(players) {
-    return [...state.answers.entries()].map(([id, ans]) => {
-      const p = players.find(p => p.id === id);
-      let display = String(ans);
-      if (state.type === 'point') {
-        const target = players.find(p => p.id === ans);
-        display = target?.name || '?';
-      } else if (state.type === 'fingers') {
-        display = String(ans);
-      } else if (state.type === 'raise') {
-        display = ans === 'raise' ? 'raise' : 'no';
-      }
-      return { id, name: p?.name || '?', color: p?.color || '#888', answer: ans, display };
-    });
-  }
-
   function emitPublic() { broadcastPublic(publicState()); }
 
+  function clearTimers() {
+    if (state.phaseTimer) { clearTimeout(state.phaseTimer); state.phaseTimer = null; }
+  }
+
+  function scheduleNextPhase(ms, fn) {
+    clearTimers();
+    state.phaseTimer = setTimeout(() => {
+      state.phaseTimer = null;
+      fn();
+    }, ms);
+  }
+
   function startRound() {
+    clearTimers();
     state.round++;
-    state.answers.clear();
     state.votes.clear();
     state.type = pickType();
     state.question = pickQuestion(state.type);
     state.fakerId = pickFaker();
-    state.phase = 'FK_ANSWERING';
+
+    // PHASE 1: WHEEL spin (3.5s)
+    state.phase = 'FK_WHEEL';
     emitPublic();
-    sendQuestionsToPlayers();
+    for (const p of getPlayers()) sendPrivate(p.id, { phase: 'FK_WHEEL', pickedType: state.type });
+
+    scheduleNextPhase(3500, () => {
+      if (state.phase !== 'FK_WHEEL') return;
+      enterReadPhase();
+    });
   }
 
-  function sendQuestionsToPlayers() {
+  function enterReadPhase() {
+    // PHASE 2: READ prompt on phones (10s)
+    state.phase = 'FK_READ';
+    state.timerDurationMs = 10000;
+    state.timerEndsAt = Date.now() + state.timerDurationMs;
+    emitPublic();
+    sendPromptsToPlayers();
+    scheduleNextPhase(state.timerDurationMs, () => {
+      if (state.phase !== 'FK_READ') return;
+      enterActPhase();
+    });
+  }
+
+  function enterActPhase() {
+    // PHASE 3: ACT (do it IRL, 5s)
+    state.phase = 'FK_ACT';
+    state.timerDurationMs = 5000;
+    state.timerEndsAt = Date.now() + state.timerDurationMs;
+    emitPublic();
+    for (const p of getPlayers()) {
+      sendPrivate(p.id, { phase: 'FK_ACT', roundType: state.type, isFaker: p.id === state.fakerId });
+    }
+    scheduleNextPhase(state.timerDurationMs, () => {
+      if (state.phase !== 'FK_ACT') return;
+      enterVotingPhase();
+    });
+  }
+
+  function enterVotingPhase() {
+    // PHASE 4: VOTE on faker (no time limit)
+    state.phase = 'FK_VOTING';
+    emitPublic();
     const players = getPlayers();
-    const candidates = state.type === 'point'
-      ? players.map(p => ({ id: p.id, name: p.name, color: p.color }))
-      : null;
     for (const p of players) {
+      const others = players.filter(o => o.id !== p.id).map(o => ({ id: o.id, name: o.name, color: o.color }));
+      sendPrivate(p.id, { phase: 'FK_VOTING', candidates: others, question: state.question });
+    }
+  }
+
+  function sendPromptsToPlayers() {
+    for (const p of getPlayers()) {
       const isFaker = p.id === state.fakerId;
       sendPrivate(p.id, {
-        phase: 'FK_ANSWERING',
-        // Use `roundType` not `type` — `type` would collide with the envelope
-        // {type:'private',...} spread and silently break the message.
+        phase: 'FK_READ',
         roundType: state.type,
         question: isFaker ? null : state.question,
         isFaker,
-        candidates: state.type === 'point'
-          ? candidates.filter(c => c.id !== p.id) // can't point at self
-          : null,
         round: state.round,
         totalRounds: state.totalRounds,
       });
@@ -743,6 +777,7 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
   }
 
   function endRound() {
+    clearTimers();
     const voteCounts = new Map();
     for (const target of state.votes.values()) {
       voteCounts.set(target, (voteCounts.get(target) || 0) + 1);
@@ -784,21 +819,11 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
   }
 
   function advance() {
-    if (state.phase === 'FK_ANSWERING') {
-      state.phase = 'FK_REVEAL';
-      emitPublic();
-    } else if (state.phase === 'FK_REVEAL') {
-      state.phase = 'FK_VOTING';
-      emitPublic();
-      const players = getPlayers();
-      for (const p of players) {
-        const others = players.filter(o => o.id !== p.id).map(o => ({ id: o.id, name: o.name, color: o.color }));
-        sendPrivate(p.id, { phase: 'FK_VOTING', candidates: others });
-      }
-    } else if (state.phase === 'FK_VOTING') {
+    if (state.phase === 'FK_VOTING') {
       endRound();
     } else if (state.phase === 'FK_ROUND_RESULTS') {
       if (state.round >= state.totalRounds) {
+        clearTimers();
         state.phase = 'FINAL_RESULTS';
         emitPublic();
         for (const p of getPlayers()) sendPrivate(p.id, { phase: 'FINAL_RESULTS' });
@@ -806,6 +831,7 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
         startRound();
       }
     }
+    // WHEEL/READ/ACT are timer-driven; advance() is a no-op for them
   }
 
   return {
@@ -814,33 +840,6 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     start() {
       if (getPlayers().length < 3) return;
       startRound();
-    },
-    submitFkAnswer(playerId, answer) {
-      if (state.phase !== 'FK_ANSWERING') return;
-      const players = getPlayers();
-      if (!players.find(p => p.id === playerId)) return;
-      // Validate based on type
-      let cleaned = null;
-      if (state.type === 'point') {
-        if (typeof answer !== 'string') return;
-        if (answer === playerId) return;
-        if (!players.find(p => p.id === answer)) return;
-        cleaned = answer;
-      } else if (state.type === 'fingers') {
-        const n = Number(answer);
-        if (!Number.isInteger(n) || n < 1 || n > 5) return;
-        cleaned = n;
-      } else if (state.type === 'raise') {
-        if (answer !== 'raise' && answer !== 'no') return;
-        cleaned = answer;
-      } else return;
-      state.answers.set(playerId, cleaned);
-      sendPrivate(playerId, { phase: 'FK_WAITING', answer: cleaned, roundType: state.type });
-      emitPublic();
-      if (state.answers.size >= players.length) {
-        state.phase = 'FK_REVEAL';
-        emitPublic();
-      }
     },
     submitVote(voterId, targetId) {
       if (state.phase !== 'FK_VOTING') return;
@@ -855,19 +854,26 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
     },
     advance,
     handleDisconnect(playerId) {
-      state.answers.delete(playerId);
       state.votes.delete(playerId);
       const players = getPlayers();
-      if (state.phase === 'FK_ANSWERING' && players.length > 0 && state.answers.size >= players.length) {
-        state.phase = 'FK_REVEAL';
-        emitPublic();
-      }
       if (state.phase === 'FK_VOTING' && players.length > 0 && state.votes.size >= players.length) {
         endRound();
       }
       if (playerId === state.fakerId &&
-          (state.phase === 'FK_ANSWERING' || state.phase === 'FK_REVEAL' || state.phase === 'FK_VOTING')) {
-        endRound();
+          (state.phase === 'FK_WHEEL' || state.phase === 'FK_READ' ||
+           state.phase === 'FK_ACT' || state.phase === 'FK_VOTING')) {
+        // Faker bailed — skip to results with no scoring
+        clearTimers();
+        state.lastResults = {
+          fakerCaught: false,
+          fakerName: '(left)',
+          fakerColor: '#888',
+          fakerPoints: 0,
+          correctGuessers: [],
+        };
+        state.phase = 'FK_ROUND_RESULTS';
+        emitPublic();
+        for (const p of players) sendPrivate(p.id, { phase: 'FK_ROUND_RESULTS' });
       }
     },
   };
@@ -1007,10 +1013,6 @@ function handleGuestMessage(conn, data) {
     return;
   }
 
-  if (data.type === 'fkAnswer') {
-    if (app.game?.submitFkAnswer) app.game.submitFkAnswer(conn.peer, data.value);
-    return;
-  }
 }
 
 // Update the host TV's mirror fill ring while the polled player drags.
@@ -1258,14 +1260,17 @@ function handlePrivateMessage(msg) {
     show('player-round-results');
   }
   // ----- Fakin' It -----
-  else if (msg.phase === 'FK_ANSWERING') {
-    renderFkPlayerAnswering(msg);
+  else if (msg.phase === 'FK_WHEEL') {
     applyPlayerColor();
-    show('player-fk-answering');
-  } else if (msg.phase === 'FK_WAITING') {
-    $('fk-my-answer-display').textContent = formatFkAnswerForDisplay(msg.roundType, msg.answer);
+    show('player-fk-wheel');
+  } else if (msg.phase === 'FK_READ') {
+    renderFkPlayerRead(msg);
     applyPlayerColor();
-    show('player-fk-waiting');
+    show('player-fk-read');
+  } else if (msg.phase === 'FK_ACT') {
+    renderFkPlayerAct(msg);
+    applyPlayerColor();
+    show('player-fk-act');
   } else if (msg.phase === 'FK_VOTING') {
     app.voteCandidates = msg.candidates || [];
     renderFkVoteButtons(app.voteCandidates);
@@ -1386,32 +1391,42 @@ function renderHostGameOrLobby(state) {
     renderLeaderboard($('gpn-results-leaderboard'), state.players);
   }
   // ----- Fakin' It -----
-  else if (state.phase === 'FK_ANSWERING') {
-    show('host-fk-answering');
-    $('fk-round').textContent = state.round;
-    $('fk-total-rounds').textContent = state.totalRounds;
-    const pill = $('fk-type-pill');
+  else if (state.phase === 'FK_WHEEL') {
+    show('host-fk-wheel');
+    $('fk-wheel-round').textContent = state.round;
+    $('fk-wheel-total').textContent = state.totalRounds;
+    spinFkTypeWheel(state.pickedType || state.type);
+    stopHostCountdown();
+  } else if (state.phase === 'FK_READ') {
+    show('host-fk-read');
+    $('fk-read-round').textContent = state.round;
+    $('fk-read-total').textContent = state.totalRounds;
+    const pill = $('fk-read-type-pill');
     pill.classList.remove('type-point', 'type-fingers', 'type-raise');
     pill.classList.add('type-' + state.type);
-    pill.textContent = state.type === 'point' ? 'POINTING'
-                     : state.type === 'fingers' ? 'HOLD UP FINGERS'
-                     : 'RAISE YOUR HAND';
-    // Question text is intentionally NOT shown on the host TV during answering
-    // (would let the faker peek). It's revealed in the next phase.
-    $('fk-answer-count').textContent = state.submittedCount || 0;
-    $('fk-answer-total').textContent = state.totalCount || state.players.length;
-    renderProgressCircles(state.players, state.submittedIds || [], 'fk-answering-progress');
-  } else if (state.phase === 'FK_REVEAL') {
-    show('host-fk-reveal');
-    $('fk-reveal-question').textContent = state.question || '';
-    renderFkRevealGrid($('fk-reveal-grid'), state.answers || [], state.type, state.players);
+    pill.textContent = fkTypeLabel(state.type);
+    // Countdown matches the timerEndsAt the host scheduled
+    startHostCountdown(state.timerEndsAt, 'fk-read-timer');
+  } else if (state.phase === 'FK_ACT') {
+    show('host-fk-act');
+    $('fk-act-round').textContent = state.round;
+    $('fk-act-total').textContent = state.totalRounds;
+    const pill = $('fk-act-type-pill');
+    pill.classList.remove('type-point', 'type-fingers', 'type-raise');
+    pill.classList.add('type-' + state.type);
+    pill.textContent = fkTypeLabel(state.type);
+    $('fk-act-headline').textContent = state.type === 'point' ? 'POINT NOW!'
+                                     : state.type === 'fingers' ? 'HOLD UP YOUR FINGERS!'
+                                     : 'RAISE OR DON\'T!';
+    startHostCountdown(state.timerEndsAt, 'fk-act-timer');
   } else if (state.phase === 'FK_VOTING') {
     show('host-fk-voting');
+    stopHostCountdown();
     $('fk-voting-question').textContent = state.question || '';
-    renderFkRevealGrid($('fk-voting-grid'), state.answers || [], state.type, state.players);
     $('fk-vote-count').textContent = state.votedCount || 0;
     $('fk-vote-total').textContent = state.totalCount || state.players.length;
   } else if (state.phase === 'FK_ROUND_RESULTS') {
+    stopHostCountdown();
     show('host-fk-round-results');
     $('fk-results-faker-name').textContent = (state.fakerName || '?').toUpperCase();
     const status = $('fk-results-status');
@@ -1566,70 +1581,45 @@ function renderVoteButtons(candidates) {
 // Fakin' It UI helpers
 // ============================================================
 
-function renderFkPlayerAnswering(msg) {
+// PLAYER (phone): READ phase — show prompt or "you're faking it" notice. No input.
+function renderFkPlayerRead(msg) {
   const isFaker = !!msg.isFaker;
   $('fk-faker-pill').hidden = !isFaker;
   if (isFaker) {
-    $('fk-player-prompt-label').textContent = 'YOU\'RE THE FAKER';
+    $('fk-player-prompt-label').textContent = "YOU'RE THE FAKER";
     if (msg.roundType === 'point') {
-      $('fk-player-question').textContent = 'Everyone is pointing at someone. Pick a player to point at.';
+      $('fk-player-question').textContent = "Everyone got a pointing prompt. Pick someone to point at when the timer hits zero.";
     } else if (msg.roundType === 'fingers') {
-      $('fk-player-question').textContent = 'Everyone is holding up 1-5 fingers. Pick a number.';
+      $('fk-player-question').textContent = "Everyone got a 1-5 prompt. Pick a number to hold up when the timer hits zero.";
     } else {
-      $('fk-player-question').textContent = 'Everyone\'s deciding to raise their hand or not. Pick one.';
+      $('fk-player-question').textContent = "Everyone got a yes/no prompt. Decide whether to raise your hand when the timer hits zero.";
     }
-    $('fk-player-tip').textContent = 'Bluff! Pick something that won\'t make you stand out.';
+    $('fk-player-tip').textContent = "Bluff! Don't stand out.";
   } else {
-    $('fk-player-prompt-label').textContent = 'YOUR PROMPT';
+    $('fk-player-prompt-label').textContent = "YOUR PROMPT";
     $('fk-player-question').textContent = msg.question || '';
-    $('fk-player-tip').textContent = 'Answer honestly — but try not to look like the faker either!';
-  }
-
-  const area = $('fk-answer-area');
-  area.innerHTML = '';
-  if (msg.roundType === 'point') {
-    const grid = document.createElement('div');
-    grid.className = 'fk-point-grid';
-    for (const c of (msg.candidates || [])) {
-      const btn = document.createElement('button');
-      btn.className = 'vote-btn';
-      btn.innerHTML = `<span class="vote-btn-dot" style="background:${c.color}"></span><span>${escape(c.name)}</span>`;
-      btn.addEventListener('click', () => sendFkAnswer(c.id));
-      grid.appendChild(btn);
-    }
-    area.appendChild(grid);
-  } else if (msg.roundType === 'fingers') {
-    const grid = document.createElement('div');
-    grid.className = 'fk-fingers-grid';
-    for (let i = 1; i <= 5; i++) {
-      const btn = document.createElement('button');
-      btn.className = 'fk-fingers-btn';
-      btn.textContent = String(i);
-      btn.addEventListener('click', () => sendFkAnswer(i));
-      grid.appendChild(btn);
-    }
-    area.appendChild(grid);
-  } else {
-    const grid = document.createElement('div');
-    grid.className = 'fk-raise-grid';
-    const yes = document.createElement('button');
-    yes.className = 'fk-raise-btn fk-raise-yes';
-    yes.innerHTML = `<span class="fk-raise-btn-icon">🙋</span><span>RAISE HAND</span>`;
-    yes.addEventListener('click', () => sendFkAnswer('raise'));
-    const no = document.createElement('button');
-    no.className = 'fk-raise-btn fk-raise-no';
-    no.innerHTML = `<span class="fk-raise-btn-icon">🙅</span><span>DON'T</span>`;
-    no.addEventListener('click', () => sendFkAnswer('no'));
-    grid.appendChild(yes);
-    grid.appendChild(no);
-    area.appendChild(grid);
+    $('fk-player-tip').textContent = "Get ready to do it for real when the timer hits zero.";
   }
 }
 
-function sendFkAnswer(value) {
-  if (app.hostConn && app.hostConn.open) {
-    app.hostConn.send({ type: 'fkAnswer', value });
+// PLAYER (phone): ACT phase — big "DO IT NOW" message
+function renderFkPlayerAct(msg) {
+  const isFaker = !!msg.isFaker;
+  $('fk-act-faker-pill').hidden = !isFaker;
+  let actText = 'DO IT NOW';
+  let actHint = 'Look around the room — who feels off?';
+  if (msg.roundType === 'point') {
+    actText = isFaker ? 'POINT AT SOMEONE' : 'POINT NOW';
+    actHint = 'Point at the player from your prompt.';
+  } else if (msg.roundType === 'fingers') {
+    actText = isFaker ? 'HOLD UP 1-5 FINGERS' : 'HOLD UP YOUR FINGERS';
+    actHint = 'Show the number from your prompt.';
+  } else {
+    actText = isFaker ? 'RAISE OR DON\'T' : 'RAISE OR DON\'T';
+    actHint = 'Raise your hand if your answer is yes.';
   }
+  $('fk-act-text').textContent = actText;
+  $('fk-act-hint').textContent = actHint;
 }
 
 function renderFkVoteButtons(candidates) {
@@ -1648,44 +1638,96 @@ function renderFkVoteButtons(candidates) {
   }
 }
 
-function formatFkAnswerForDisplay(type, raw) {
-  if (type === 'fingers') return String(raw);
-  if (type === 'raise') return raw === 'raise' ? '🙋 RAISED' : '🙅 NOT RAISED';
-  if (type === 'point') {
-    // raw is a peerId; show "→ <name>" by looking up in voteCandidates if available
-    return '→ pointed';
-  }
-  return String(raw);
+function fkTypeLabel(type) {
+  return type === 'point' ? 'POINTING'
+       : type === 'fingers' ? 'HOLD UP FINGERS'
+       : 'RAISE YOUR HAND';
 }
 
-function renderFkRevealGrid(el, answers, type, players) {
-  el.innerHTML = '';
-  let i = 0;
-  for (const a of answers) {
-    const card = document.createElement('div');
-    card.className = 'fk-reveal-card';
-    card.style.animationDelay = `${i * 80}ms`;
+// FK type-picker wheel: 3 segments (POINT / FINGERS / RAISE), spins ~3s
+// and lands on the chosen type.
+function spinFkTypeWheel(pickedType) {
+  const wheelGroup = document.getElementById('fk-wheel-rotating');
+  if (!wheelGroup) return;
+  // Reset transition so the rotation restart is honored
+  wheelGroup.style.transition = 'none';
+  wheelGroup.style.transform = 'rotate(0deg)';
+  void wheelGroup.getBoundingClientRect();
 
-    let answerHtml;
-    if (type === 'point') {
-      const target = players.find(p => p.id === a.answer);
-      const name = target?.name || '?';
-      const color = target?.color || '#888';
-      answerHtml = `<div class="fk-reveal-answer"><span class="fk-reveal-arrow">→</span><span class="fk-reveal-dot" style="background:${color};display:inline-block;width:18px;height:18px;border-radius:50%;vertical-align:middle;margin-right:6px"></span>${escape(name)}</div>`;
-    } else if (type === 'fingers') {
-      answerHtml = `<div class="fk-reveal-answer fk-answer-fingers">${escape(a.display)}</div>`;
-    } else {
-      answerHtml = `<div class="fk-reveal-answer fk-answer-raise">${a.answer === 'raise' ? '🙋 RAISED' : '🙅 NOT RAISED'}</div>`;
+  // Build 3 segments if not already present
+  if (!wheelGroup.dataset.built) {
+    const r = 100;
+    const segDeg = 120;
+    const labels = ['POINT', 'FINGERS', 'RAISE'];
+    const colors = ['#06b6d4', '#f59e0b', '#22c55e'];
+    const types = ['point', 'fingers', 'raise'];
+    for (let i = 0; i < 3; i++) {
+      const startA = -90 + i * segDeg;
+      const endA = -90 + (i + 1) * segDeg;
+      const sA = startA * Math.PI / 180;
+      const eA = endA * Math.PI / 180;
+      const x1 = r * Math.cos(sA), y1 = r * Math.sin(sA);
+      const x2 = r * Math.cos(eA), y2 = r * Math.sin(eA);
+      const d = `M0,0 L${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 0,1 ${x2.toFixed(2)},${y2.toFixed(2)} Z`;
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', colors[i]);
+      path.setAttribute('stroke', 'rgba(255,255,255,0.9)');
+      path.setAttribute('stroke-width', '2');
+      path.dataset.type = types[i];
+      wheelGroup.appendChild(path);
+
+      const midA = (startA + endA) / 2;
+      const tx = 0.6 * r * Math.cos(midA * Math.PI / 180);
+      const ty = 0.6 * r * Math.sin(midA * Math.PI / 180);
+      const text = document.createElementNS(SVG_NS, 'text');
+      text.setAttribute('x', tx.toFixed(2));
+      text.setAttribute('y', ty.toFixed(2));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('dominant-baseline', 'middle');
+      text.setAttribute('fill', '#fff');
+      text.setAttribute('font-family', 'Bungee, sans-serif');
+      text.setAttribute('font-size', '14');
+      text.setAttribute('transform', `rotate(${midA + 90}, ${tx.toFixed(2)}, ${ty.toFixed(2)})`);
+      text.textContent = labels[i];
+      wheelGroup.appendChild(text);
     }
-    card.innerHTML = `
-      <div class="fk-reveal-card-head">
-        <span class="fk-reveal-dot" style="background:${a.color}"></span>
-        <span class="fk-reveal-name">${escape(a.name)}</span>
-      </div>
-      ${answerHtml}
-    `;
-    el.appendChild(card);
-    i++;
+    wheelGroup.dataset.built = '1';
+  }
+
+  // Compute final rotation: land the picked segment center under the top pointer.
+  // Segment i is centered at -90 + i*120 + 60 = -30 + i*120.
+  // To put that at -90 (top), rotate by -(segCenter + 90).
+  const idx = pickedType === 'point' ? 0 : pickedType === 'fingers' ? 1 : 2;
+  const segCenter = -30 + idx * 120;
+  const baseRot = -(segCenter + 90); // 0..-360 range
+  const finalRot = baseRot - 360 * 4; // 4 extra full spins for drama
+
+  requestAnimationFrame(() => {
+    wheelGroup.style.transition = 'transform 3000ms cubic-bezier(0.18, 0.89, 0.21, 1)';
+    wheelGroup.style.transform = `rotate(${finalRot}deg)`;
+  });
+}
+
+// Host countdown timer (shared across FK_READ + FK_ACT phases)
+let hostCountdownInterval = null;
+function startHostCountdown(endsAtMs, displayElId) {
+  stopHostCountdown();
+  const el = document.getElementById(displayElId);
+  if (!el) return;
+  function tick() {
+    const remaining = Math.max(0, endsAtMs - Date.now());
+    const seconds = Math.ceil(remaining / 1000);
+    el.textContent = seconds;
+    if (remaining <= 0) stopHostCountdown();
+  }
+  tick();
+  hostCountdownInterval = setInterval(tick, 100);
+}
+function stopHostCountdown() {
+  if (hostCountdownInterval) {
+    clearInterval(hostCountdownInterval);
+    hostCountdownInterval = null;
   }
 }
 
@@ -1823,7 +1865,6 @@ $('reveal-answers-next').addEventListener('click', () => app.game?.advance());
 $('reveal-question-next').addEventListener('click', () => app.game?.advance());
 $('results-next').addEventListener('click', () => app.game?.advance());
 $('gpn-results-next').addEventListener('click', () => app.game?.advance());
-$('fk-reveal-next').addEventListener('click', () => app.game?.advance());
 $('fk-results-next').addEventListener('click', () => app.game?.advance());
 $('final-back').addEventListener('click', () => resetToLobby());
 
