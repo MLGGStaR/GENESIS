@@ -646,13 +646,10 @@ function createFakinItGame({ getPlayers, broadcastPublic, sendPrivate }) {
   }
 
   function pickFaker() {
+    // Fully random — same player can be the faker multiple rounds in a row.
     const ids = getPlayers().map(p => p.id);
     if (ids.length === 0) return null;
-    state.fakerRotation = state.fakerRotation.filter(id => ids.includes(id));
-    if (state.fakerRotation.length === 0) {
-      state.fakerRotation = [...ids].sort(() => Math.random() - 0.5);
-    }
-    return state.fakerRotation.shift();
+    return ids[Math.floor(Math.random() * ids.length)];
   }
 
   function publicState() {
