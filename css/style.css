@@ -240,7 +240,8 @@ h1, h2, h3 { margin: 0; }
 
 /* logo */
 .logo {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(72px, 11vw, 160px);
   line-height: 1;
   letter-spacing: 4px;
@@ -288,7 +289,8 @@ h1, h2, h3 { margin: 0; }
   text-align: center;
 }
 .join-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 2px;
   color: var(--text-soft);
@@ -302,7 +304,8 @@ h1, h2, h3 { margin: 0; }
   word-break: break-all;
 }
 .room-code {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(48px, 5vw, 72px);
   letter-spacing: 8px;
   background: var(--code-grad);
@@ -363,7 +366,8 @@ h1, h2, h3 { margin: 0; }
   padding: 22px 24px 24px;
 }
 .game-card-title {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 30px;
   letter-spacing: 2px;
   color: var(--text);
@@ -431,7 +435,8 @@ h1, h2, h3 { margin: 0; }
 .back-btn:hover { transform: translateX(-4px); border-color: var(--accent); }
 
 .lobby-title {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(48px, 6vw, 80px);
   background: var(--logo-grad);
   -webkit-background-clip: text;
@@ -441,7 +446,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .lobby-section-title {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 22px;
   letter-spacing: 3px;
   color: var(--text-soft);
@@ -504,7 +510,8 @@ h1, h2, h3 { margin: 0; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 2px;
   border-radius: 16px;
   padding: 16px 32px;
@@ -555,13 +562,15 @@ h1, h2, h3 { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 .round-banner-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 2px;
   color: var(--text-soft);
 }
 .round-banner-num {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 28px;
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -574,7 +583,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .big-headline {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(48px, 7vw, 96px);
   letter-spacing: 3px;
   text-align: center;
@@ -707,7 +717,8 @@ h1, h2, h3 { margin: 0; }
 
 /* reveal question screen */
 .reveal-q-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 18px;
   letter-spacing: 3px;
   color: var(--text-soft);
@@ -715,7 +726,8 @@ h1, h2, h3 { margin: 0; }
   text-align: center;
 }
 .reveal-q-text {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(36px, 5.5vw, 72px);
   background: var(--logo-grad);
   -webkit-background-clip: text;
@@ -758,7 +770,8 @@ h1, h2, h3 { margin: 0; }
   background: linear-gradient(135deg, var(--surface), var(--surface-2));
 }
 .results-q-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 2px;
   color: var(--text-soft);
@@ -772,7 +785,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .results-status {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(22px, 3vw, 38px);
   text-align: center;
   letter-spacing: 2px;
@@ -811,7 +825,8 @@ h1, h2, h3 { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 .lb-rank {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 18px;
   width: 36px;
   color: var(--text-soft);
@@ -828,7 +843,8 @@ h1, h2, h3 { margin: 0; }
   font-size: 18px;
 }
 .lb-score {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 18px;
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -882,12 +898,14 @@ h1, h2, h3 { margin: 0; }
   line-height: 1;
 }
 .podium-name {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 26px;
   letter-spacing: 1px;
 }
 .podium-score {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 22px;
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -937,7 +955,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .play-logo {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 72px;
   background: var(--logo-grad);
   -webkit-background-clip: text;
@@ -956,7 +975,8 @@ h1, h2, h3 { margin: 0; }
   font-weight: 500;
 }
 .play-h2 {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 32px;
   letter-spacing: 2px;
   text-align: center;
@@ -1001,7 +1021,8 @@ h1, h2, h3 { margin: 0; }
   gap: 6px;
 }
 .play-field-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-soft);
@@ -1024,7 +1045,8 @@ h1, h2, h3 { margin: 0; }
   box-shadow: 0 0 0 4px rgba(255, 46, 147, 0.18);
 }
 #join-code {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 34px;
   letter-spacing: 8px;
   text-align: center;
@@ -1042,7 +1064,8 @@ h1, h2, h3 { margin: 0; }
 .play-imposter-pill {
   background: var(--imposter-grad);
   color: #fff;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 15px;
   letter-spacing: 2px;
   padding: 10px 18px;
@@ -1058,7 +1081,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .play-q-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 13px;
   letter-spacing: 2px;
   color: var(--text-soft);
@@ -1213,7 +1237,8 @@ h1, h2, h3 { margin: 0; }
 }
 
 .entry-card-title {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 24px;
   letter-spacing: 2px;
   background: var(--logo-grad);
@@ -1241,7 +1266,8 @@ h1, h2, h3 { margin: 0; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 3px;
   color: var(--text-faint);
@@ -1323,13 +1349,15 @@ h1, h2, h3 { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 .play-room-pill-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 12px;
   letter-spacing: 2px;
   color: var(--text-soft);
 }
 .play-room-pill-code {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 20px;
   letter-spacing: 4px;
   background: var(--code-grad);
@@ -1405,7 +1433,8 @@ h1, h2, h3 { margin: 0; }
   box-shadow: inset 0 0 0 3px rgba(255,255,255,0.4);
 }
 .gpn-polled-name {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 1px;
   color: var(--text);
 }
@@ -1442,7 +1471,8 @@ h1, h2, h3 { margin: 0; }
   font-size: 22px;
 }
 .gpn-guess-pct {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(36px, 4vw, 56px);
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -1481,7 +1511,8 @@ h1, h2, h3 { margin: 0; }
   100% { opacity: 1; transform: scale(1); }
 }
 .gpn-reveal-label {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 13px;
   letter-spacing: 2px;
   color: var(--text-soft);
@@ -1489,7 +1520,8 @@ h1, h2, h3 { margin: 0; }
 }
 .gpn-reveal-card-actual .gpn-reveal-label { color: var(--accent); }
 .gpn-reveal-pct {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(48px, 6vw, 80px);
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -1505,11 +1537,13 @@ h1, h2, h3 { margin: 0; }
   letter-spacing: 1px;
 }
 .gpn-reveal-card-actual .gpn-reveal-name {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 3px;
 }
 .gpn-reveal-vs {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(36px, 4vw, 56px);
   color: var(--text-faint);
 }
@@ -1532,7 +1566,8 @@ h1, h2, h3 { margin: 0; }
   margin: 8px 0 18px;
 }
 .gpn-poll-percent {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 70px;
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -1596,7 +1631,8 @@ h1, h2, h3 { margin: 0; }
   box-shadow: var(--shadow-sm);
 }
 .gpn-guess-display-name {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 20px;
   letter-spacing: 1px;
   color: var(--text);
@@ -1610,7 +1646,8 @@ h1, h2, h3 { margin: 0; }
   display: block;
 }
 .gpn-guess-display-pct {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 56px;
   background: var(--code-grad);
   -webkit-background-clip: text;
@@ -1638,7 +1675,8 @@ h1, h2, h3 { margin: 0; }
   border-radius: 22px;
   border: 4px solid var(--border);
   background: var(--surface);
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 2px;
   font-size: 22px;
   color: var(--text);
@@ -1683,7 +1721,8 @@ h1, h2, h3 { margin: 0; }
   margin-top: 10px;
   background: linear-gradient(135deg, #facc15, #f97316);
   color: #1a0f2e;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 3px;
   border-radius: 999px;
   font-size: 18px;
@@ -1780,7 +1819,8 @@ h1, h2, h3 { margin: 0; }
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   background: var(--code-grad);
   -webkit-background-clip: text;
   background-clip: text;
@@ -1826,7 +1866,8 @@ h1, h2, h3 { margin: 0; }
 
 /* Small number labels inside the fill ring (0/25/50/75 reference marks) */
 .gpn-fill-labels text {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 11px;
   fill: var(--text-faint);
   letter-spacing: 1px;
@@ -1876,7 +1917,8 @@ h1, h2, h3 { margin: 0; }
 /* Round-type pill on host TV (POINTING / FINGERS / RAISE HAND) */
 .fk-type-pill {
   display: inline-block;
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 14px;
   letter-spacing: 3px;
   padding: 8px 18px;
@@ -1919,7 +1961,8 @@ h1, h2, h3 { margin: 0; }
   border-radius: 18px;
   border: 3px solid var(--border);
   background: var(--surface);
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 32px;
   color: var(--text);
   display: flex;
@@ -1946,7 +1989,8 @@ h1, h2, h3 { margin: 0; }
   border-radius: 22px;
   border: 4px solid var(--border);
   background: var(--surface);
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   letter-spacing: 2px;
   font-size: 18px;
   color: var(--text);
@@ -2009,7 +2053,8 @@ h1, h2, h3 { margin: 0; }
   color: var(--text-soft);
 }
 .fk-reveal-answer {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: 22px;
   letter-spacing: 1px;
   color: var(--text);
@@ -2061,7 +2106,8 @@ h1, h2, h3 { margin: 0; }
 
 /* FK countdown timer (host-fk-read + host-fk-act) */
 .fk-timer-display {
-  font-family: 'Bungee', sans-serif;
+  font-family: 'Outfit', sans-serif;
+  font-weight: 700;
   font-size: clamp(120px, 18vw, 220px);
   line-height: 1;
   background: var(--code-grad);
